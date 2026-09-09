@@ -38,9 +38,10 @@ const (
 	// pkg/cache/scheduler/tas_flavor_snapshot.go. Matched as substrings
 	// because multi-podset messages are joined with "; " and long
 	// messages are truncated at the tail.
-	msgCouldntAssignFlavors = "couldn't assign flavors to pod set"
-	msgTopologyNoFitAny     = "doesn't allow to fit"
-	msgTopologyNoFitPartial = "allows to fit only"
+	msgCouldntAssignFlavors    = "couldn't assign flavors to pod set"
+	msgTopologyNoFitAny        = "doesn't allow to fit"
+	msgTopologyNoFitPartial    = "allows to fit only"
+	msgInsufficientUnusedQuota = "insufficient unused quota"
 )
 
 // IsStuckTASNoFit reports whether the Workload is pending specifically
@@ -62,7 +63,8 @@ func IsStuckTASNoFit(wl *kueue.Workload, mode config.DetectionMode) bool {
 	byMessage := cond.Reason == reasonPending &&
 		strings.Contains(cond.Message, msgCouldntAssignFlavors) &&
 		(strings.Contains(cond.Message, msgTopologyNoFitAny) ||
-			strings.Contains(cond.Message, msgTopologyNoFitPartial))
+			strings.Contains(cond.Message, msgTopologyNoFitPartial) ||
+			strings.Contains(cond.Message, msgInsufficientUnusedQuota))
 
 	switch mode {
 	case config.DetectionReason:

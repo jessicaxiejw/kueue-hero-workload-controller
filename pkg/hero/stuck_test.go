@@ -125,6 +125,18 @@ func TestIsStuckTASNoFit(t *testing.T) {
 			},
 		},
 		{
+			// TAS level mismatch reported together with a quota
+			// shortfall in the same pod set message.
+			name: "0.16 missing topology level with unused quota shortfall matches",
+			wl: heroWorkload().Condition(pendingCondition("Pending",
+				`couldn't assign flavors to pod set worker: Flavor "cpu-flavor" does not contain the requested level, insufficient unused quota for nvidia.com/gpu in flavor gpu-flavor, 4 more needed`)).Obj(),
+			want: map[config.DetectionMode]bool{
+				config.DetectionAuto:    true,
+				config.DetectionMessage: true,
+				config.DetectionReason:  false,
+			},
+		},
+		{
 			name: "truncated message tail still matches",
 			wl: heroWorkload().Condition(pendingCondition("Pending",
 				`couldn't assign flavors to pod set main: topology "cloud.provider.com/topology-block" doesn't allow to fit any of 16 pod(s). Total nodes: 4; excl`)).Obj(),
