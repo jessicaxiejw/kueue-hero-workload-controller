@@ -506,7 +506,7 @@ func (r *Reconciler) handleNonHero(ctx context.Context, wl *kueue.Workload, reas
 	if own := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)[key]; own != nil {
 		return r.abortDrain(ctx, wl, own, "workload is no longer a hero: "+string(reason))
 	}
-	logf.FromContext(ctx).V(2).Info("not a hero", "reason", reason)
+	logf.FromContext(ctx).V(3).Info("not a hero", "reason", reason)
 	return ctrl.Result{}, nil
 }
 

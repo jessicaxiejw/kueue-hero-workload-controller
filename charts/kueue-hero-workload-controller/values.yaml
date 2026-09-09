@@ -73,5 +73,5 @@ podAnnotations: {}
 podLabels: {}
 priorityClassName: ""
 
-# Extra args appended to the manager container (e.g. -zap-log-level=2).
+# Extra args appended to the manager container (e.g. --zap-log-level=2).
 extraArgs: []
