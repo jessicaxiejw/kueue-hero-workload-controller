@@ -56,7 +56,7 @@ This controller is the stopgap from the design doc *Hero Workloads on Kueue TAS:
 
 ### M2 — Hero identification & stuck detection (pure)
 `pkg/hero/`:
-- `IsHero(wl, cq, cfg)` — CQ label `hero.coreweave.com/enabled=true`; `spec.priorityClassRef` is a `WorkloadPriorityClass` named `hero-critical`; every podset tolerates the taint key.
+- `IsHero(wl, cq, cfg)` — CQ label `hero.coreweave.com/enabled=true`; `spec.priorityClassRef` is a `WorkloadPriorityClass` named `hero-critical`; every podset carrying the slice pair (`podset-slice-required-topology` + `podset-slice-size`) tolerates the taint key — podsets without the slice pair are never placed in a drained domain, so their tolerations are not checked.
 - `IsStuckTASNoFit(wl, mode)` — strategy interface: `auto` (default; reason `TopologyPlacementFailed` OR `Pending`+message-match) / `message` / `reason`.
 - `RequiredTopologyLevels(wl)`: the drain trigger is the SLICE PAIR only — `topologyRequest.podSetSliceRequiredTopology` + `podSetSliceSize` both set (customer-confirmed hero contract; plain `required` never triggers). `CoarsestLevel` picks the drain level when podsets disagree (Topology `spec.levels` is ordered highest→lowest). `GPURequest(wl)`; `HeroPriority(wl)` from `spec.priority`.
 - Test fixtures: kueue's own wrappers (`sigs.k8s.io/kueue/pkg/util/testing/v1beta2`).

@@ -71,9 +71,8 @@ func TestIsHero(t *testing.T) {
 			wantReason: ReasonWrongPriorityClass,
 		},
 		{
-			name: "missing taint toleration",
-			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
-				RequiredTopologyRequest("cloud.provider.com/topology-block").
+			name: "missing taint toleration on slice podset",
+			wl: heroWorkload().PodSets(*slicePodSet("main", 16).
 				Request("nvidia.com/gpu", "8").
 				Obj()).Obj(),
 			cq:         heroCQ(),
@@ -81,19 +80,42 @@ func TestIsHero(t *testing.T) {
 			wantReason: ReasonMissingToleration,
 		},
 		{
-			name: "one of two podsets missing toleration",
+			name: "one of two slice podsets missing toleration",
 			wl: heroWorkload().PodSets(
-				*utiltesting.MakePodSet("leader", 1).
+				*slicePodSet("leader", 1).
 					Toleration(heroToleration(cfg.TaintKey)).Obj(),
-				*utiltesting.MakePodSet("workers", 15).Obj(),
+				*slicePodSet("workers", 15).Obj(),
 			).Obj(),
 			cq:         heroCQ(),
 			want:       false,
 			wantReason: ReasonMissingToleration,
 		},
 		{
-			name: "toleration via Exists-all wildcard",
+			// Only slice-pair podsets can land in a drained domain, so
+			// the untainted sidecars need no toleration.
+			name: "non-slice podsets need no toleration",
+			wl: heroWorkload().PodSets(
+				*slicePodSet("workers", 15).
+					Toleration(heroToleration(cfg.TaintKey)).Obj(),
+				*utiltesting.MakePodSet("leader", 1).Obj(),
+				*utiltesting.MakePodSet("sidecar", 1).
+					RequiredTopologyRequest(levelBlock).Obj(),
+			).Obj(),
+			cq:   heroCQ(),
+			want: true,
+		},
+		{
+			// No slice pair anywhere: not drainable-for, so nothing to
+			// tolerate. The drain controller skips it on topology.
+			name: "no slice podsets at all",
 			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
+				RequiredTopologyRequest(levelBlock).Obj()).Obj(),
+			cq:   heroCQ(),
+			want: true,
+		},
+		{
+			name: "toleration via Exists-all wildcard",
+			wl: heroWorkload().PodSets(*slicePodSet("main", 16).
 				Toleration(corev1.Toleration{Operator: corev1.TolerationOpExists}).
 				Obj()).Obj(),
 			cq:   heroCQ(),
@@ -101,7 +123,7 @@ func TestIsHero(t *testing.T) {
 		},
 		{
 			name: "toleration with NoSchedule effect explicit",
-			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
+			wl: heroWorkload().PodSets(*slicePodSet("main", 16).
 				Toleration(corev1.Toleration{
 					Key:      cfg.TaintKey,
 					Operator: corev1.TolerationOpExists,
@@ -113,7 +135,7 @@ func TestIsHero(t *testing.T) {
 		},
 		{
 			name: "toleration for different key",
-			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
+			wl: heroWorkload().PodSets(*slicePodSet("main", 16).
 				Toleration(heroToleration("some.other.com/taint")).
 				Obj()).Obj(),
 			cq:         heroCQ(),

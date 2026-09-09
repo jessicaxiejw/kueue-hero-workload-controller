@@ -93,7 +93,10 @@ Three things make it a hero:
 3. **Tolerate the drain taint.** The controller frees space by tainting
    nodes; your pods must tolerate that taint or they cannot use the space.
    Use `operator: Equal` with your own ClusterQueue name as the value, so
-   your hero only enters domains drained for your queue.
+   your hero only enters domains drained for your queue. Only the podsets
+   carrying the slice pair are required to tolerate it — a podset without
+   the slice pair is never placed in a drained domain, so its tolerations
+   are not checked.
 
 Topology notes:
 
@@ -108,8 +111,10 @@ Topology notes:
   silently ignores it.
 
 For a JobSet, the same labels go on the JobSet metadata and the annotation +
-toleration go on **each** replicated job's pod template (every podset must
-tolerate the taint).
+toleration go on **each** replicated job's pod template that carries the
+slice pair. Replicated jobs without the slice pair (an untethered leader,
+a sidecar) do not need the toleration to pass hero identification — but add
+it anyway if you expect them to land in the drained domain.
 
 **JobSet co-placement (strongly recommended).** Each replicated job places
 independently by default: after a drain, TAS may put an untethered leader
@@ -152,7 +157,7 @@ order:
 |---|---|
 | No events, no drain | ClusterQueue label `hero.coreweave.com/enabled: "true"` present? |
 | No events, no drain | Workload's `spec.priorityClassRef` names `hero-critical` with kind `WorkloadPriorityClass`? (`kueue.x-k8s.io/priority-class` label on the Job, not the pod PriorityClass) |
-| No events, no drain | Every podset's pod template tolerates the taint key? |
+| No events, no drain | Every slice-pair podset's pod template tolerates the taint key? |
 | Event `HeroExceedsQuota` | Hero request exceeds the CQ's nominal quota, a customer-side commitment; shrink the job or raise quota |
 | Event `NoFeasibleDomains` | No domain can fit the hero even after eviction (capacity, priorities, or another hero occupies every candidate) |
 | Event `DrainQueued` | Another hero's drain is in flight; this one is queued |

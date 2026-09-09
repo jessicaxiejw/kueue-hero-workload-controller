@@ -30,7 +30,7 @@ const (
 //
 //  1. submitted through a ClusterQueue labeled <HeroCQLabelKey>: "true"
 //  2. carrying the hero WorkloadPriorityClass name
-//  3. every podset tolerates the hero taint key
+//  3. every podset carrying the slice pair tolerates the hero taint key
 //
 // cq must be the ClusterQueue the Workload targets (spec.queueName's CQ or
 // status.admission.clusterQueue); passing it in keeps this predicate pure.
@@ -52,12 +52,17 @@ func IsHero(wl *kueue.Workload, cq *kueue.ClusterQueue, cfg *config.Config) (boo
 		return false, ReasonWrongPriorityClass
 	}
 
-	// 3. every podset tolerates the drain taint as it will actually be
-	// applied: key + the hero's own ClusterQueue as the value. Equal on
-	// the own CQ is the recommended form (it keeps the hero out of other
-	// CQs' drained domains); a bare Exists also passes here.
+	// 3. every drain-relevant podset tolerates the drain taint as it will
+	// actually be applied: key + the hero's own ClusterQueue as the
+	// value. Equal on the own CQ is the recommended form (it keeps the
+	// hero out of other CQs' drained domains); a bare Exists also passes
+	// here. Podsets without the slice pair are never placed in a drained
+	// domain, so their tolerations are irrelevant.
 	heroTaint := &corev1.Taint{Key: cfg.TaintKey, Value: cq.Name, Effect: corev1.TaintEffectNoSchedule}
 	for i := range wl.Spec.PodSets {
+		if !RequiresSliceTopology(&wl.Spec.PodSets[i]) {
+			continue
+		}
 		if !toleratesTaint(wl.Spec.PodSets[i].Template.Spec.Tolerations, heroTaint) {
 			return false, ReasonMissingToleration
 		}
