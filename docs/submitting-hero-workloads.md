@@ -98,11 +98,15 @@ Three things make it a hero:
 Topology notes:
 
 - Slices are independent by default: each fits one rack, but two slices
-  may land in different blocks (the controller drains domains sharing one
-  parent, but that contiguous capacity is offered, not enforced). To keep
+  may land in different blocks, and the controller drains the same way —
+  it packs the cheapest racks it can find anywhere at that level. To keep
   the whole workload inside one higher-level domain, add
   `podset-required-topology: <higher level>` on top of the slice pair, as
-  in the example. The drain still triggers from the slice pair.
+  in the example; the controller then confines the drain to a single
+  domain at that level too. The drain still triggers from the slice pair.
+  Be aware this is a real constraint on feasibility: a hero needing more
+  racks than any one block holds is undrainable with it and drainable
+  without it.
 - `podset-required-topology` ALONE never triggers a drain.
 - Do not use `podset-slice-required-topology-constraints`: kueue 0.16.9
   silently ignores it.
