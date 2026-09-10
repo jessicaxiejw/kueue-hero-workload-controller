@@ -65,20 +65,31 @@ func RequiresSliceTopology(ps *kueue.PodSet) bool {
 //
 // A `required` level FINER than the drain level constrains placement
 // inside a single drained domain, which any plan at the drain level
-// already satisfies; it groups nothing and is reported as no constraint.
+// already satisfies; it groups nothing. Such levels are dropped BEFORE
+// picking the finest, so a fine requirement on one podset (say a leader
+// pinned to a hostname) cannot mask a coarser one on another podset (say
+// workers that must share one block). Only when no required level is at
+// or above the drain level is there no constraint.
 func GroupingLevel(wl *kueue.Workload, topologyLevels []string, drainLevel string) (string, bool) {
 	required := groupingLevels(wl)
 	if len(required) == 0 {
 		return "", true
 	}
-	level, ok := finestLevel(required, topologyLevels)
-	if !ok {
-		return "", false
+	drainIdx := slices.Index(topologyLevels, drainLevel)
+	var applicable []string
+	for _, r := range required {
+		idx := slices.Index(topologyLevels, r)
+		if idx < 0 {
+			return "", false
+		}
+		if idx <= drainIdx {
+			applicable = append(applicable, r)
+		}
 	}
-	if slices.Index(topologyLevels, level) > slices.Index(topologyLevels, drainLevel) {
+	if len(applicable) == 0 {
 		return "", true
 	}
-	return level, true
+	return finestLevel(applicable, topologyLevels)
 }
 
 // groupingLevels returns the distinct podset-level `required` topology
