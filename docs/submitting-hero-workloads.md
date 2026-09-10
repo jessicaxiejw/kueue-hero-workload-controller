@@ -93,23 +93,32 @@ Three things make it a hero:
 3. **Tolerate the drain taint.** The controller frees space by tainting
    nodes; your pods must tolerate that taint or they cannot use the space.
    Use `operator: Equal` with your own ClusterQueue name as the value, so
-   your hero only enters domains drained for your queue.
+   your hero only enters domains drained for your queue. Only the podsets
+   carrying the slice pair are required to tolerate it — a podset without
+   the slice pair is never placed in a drained domain, so its tolerations
+   are not checked.
 
 Topology notes:
 
 - Slices are independent by default: each fits one rack, but two slices
-  may land in different blocks (the controller drains domains sharing one
-  parent, but that contiguous capacity is offered, not enforced). To keep
+  may land in different blocks, and the controller drains the same way —
+  it packs the cheapest racks it can find anywhere at that level. To keep
   the whole workload inside one higher-level domain, add
   `podset-required-topology: <higher level>` on top of the slice pair, as
-  in the example. The drain still triggers from the slice pair.
+  in the example; the controller then confines the drain to a single
+  domain at that level too. The drain still triggers from the slice pair.
+  Be aware this is a real constraint on feasibility: a hero needing more
+  racks than any one block holds is undrainable with it and drainable
+  without it.
 - `podset-required-topology` ALONE never triggers a drain.
 - Do not use `podset-slice-required-topology-constraints`: kueue 0.16.9
   silently ignores it.
 
 For a JobSet, the same labels go on the JobSet metadata and the annotation +
-toleration go on **each** replicated job's pod template (every podset must
-tolerate the taint).
+toleration go on **each** replicated job's pod template that carries the
+slice pair. Replicated jobs without the slice pair (an untethered leader,
+a sidecar) do not need the toleration to pass hero identification — but add
+it anyway if you expect them to land in the drained domain.
 
 **JobSet co-placement (strongly recommended).** Each replicated job places
 independently by default: after a drain, TAS may put an untethered leader
@@ -152,7 +161,7 @@ order:
 |---|---|
 | No events, no drain | ClusterQueue label `hero.coreweave.com/enabled: "true"` present? |
 | No events, no drain | Workload's `spec.priorityClassRef` names `hero-critical` with kind `WorkloadPriorityClass`? (`kueue.x-k8s.io/priority-class` label on the Job, not the pod PriorityClass) |
-| No events, no drain | Every podset's pod template tolerates the taint key? |
+| No events, no drain | Every slice-pair podset's pod template tolerates the taint key? |
 | Event `HeroExceedsQuota` | Hero request exceeds the CQ's nominal quota, a customer-side commitment; shrink the job or raise quota |
 | Event `NoFeasibleDomains` | No domain can fit the hero even after eviction (capacity, priorities, or another hero occupies every candidate) |
 | Event `DrainQueued` | Another hero's drain is in flight; this one is queued |

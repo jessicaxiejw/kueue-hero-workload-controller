@@ -99,12 +99,16 @@ func victimsBelowHero(victims []VictimWorkload, heroPriority int32) bool {
 }
 
 // SelectDomains picks the min-cost feasible domain set covering the hero's
-// demand, packing chunks into as few domains as possible, with all
-// selected domains inside ONE parent domain (racks within the same block):
-// hero slices must stay network-adjacent. It returns exactly one of: a
-// plan to execute (non-nil), or the reason none is possible.
+// demand, packing chunks into as few domains as possible. It returns
+// exactly one of: a plan to execute (non-nil), or the reason none is
+// possible.
 //
-// Greedy fit runs independently per parent group; the cheapest covering
+// Selected domains must share a snapshot.Domain.Group — the ancestor the
+// hero's podset `required` topology forces its slices into. Heroes that
+// declare no `required` level have an empty Group on every domain, which
+// collapses to a single group and packs freely across the whole level;
+// that matches kueue, which spreads unconstrained slices wherever they
+// fit. Greedy fit runs independently per group; the cheapest covering
 // group wins. Pure planning — the returned plan is executed later (taint
 // everything first, then evict), nothing changes in the cluster while
 // this runs.
@@ -115,7 +119,7 @@ func SelectDomains(
 	cfg *config.Config,
 	now time.Time,
 ) (*DrainPlan, InfeasibleReason) {
-	byParent := map[string][]*candidate{}
+	byGroup := map[string][]*candidate{}
 	heroBlocked := false
 
 	ids := make([]string, 0, len(s.Domains))
@@ -143,7 +147,7 @@ func SelectDomains(
 		for i := range victims {
 			cost += Cost(victims[i], heroSpec, cfg)
 		}
-		byParent[d.Parent] = append(byParent[d.Parent], &candidate{
+		byGroup[d.Group] = append(byGroup[d.Group], &candidate{
 			domain:    d,
 			victims:   victims,
 			cost:      cost,
@@ -164,15 +168,15 @@ func SelectDomains(
 		return nil, NoFeasibleDomains // empty demand; caller gates on this
 	}
 
-	parents := make([]string, 0, len(byParent))
-	for parent := range byParent {
-		parents = append(parents, parent)
+	groups := make([]string, 0, len(byGroup))
+	for group := range byGroup {
+		groups = append(groups, group)
 	}
-	slices.Sort(parents) // deterministic iteration
+	slices.Sort(groups) // deterministic iteration
 
 	var best *DrainPlan
-	for _, parent := range parents {
-		plan := packWithinParent(byParent[parent], units, heroSpec, cfg)
+	for _, group := range groups {
+		plan := packWithinGroup(byGroup[group], units, heroSpec, cfg)
 		if plan == nil {
 			continue
 		}
@@ -189,9 +193,9 @@ func SelectDomains(
 	return best, ""
 }
 
-// packWithinParent greedily fits the demand units into one parent group's
+// packWithinGroup greedily fits the demand units into one group's
 // candidates; nil when the group cannot cover the demand.
-func packWithinParent(cands []*candidate, units []resource.Quantity, heroSpec HeroSpec, cfg *config.Config) *DrainPlan {
+func packWithinGroup(cands []*candidate, units []resource.Quantity, heroSpec HeroSpec, cfg *config.Config) *DrainPlan {
 	for _, c := range cands { // reset packing state (groups are retried)
 		c.remaining = reclaimable(c.domain)
 		c.selected = false

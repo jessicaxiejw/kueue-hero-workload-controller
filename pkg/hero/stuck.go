@@ -38,9 +38,11 @@ const (
 	// pkg/cache/scheduler/tas_flavor_snapshot.go. Matched as substrings
 	// because multi-podset messages are joined with "; " and long
 	// messages are truncated at the tail.
-	msgCouldntAssignFlavors = "couldn't assign flavors to pod set"
-	msgTopologyNoFitAny     = "doesn't allow to fit"
-	msgTopologyNoFitPartial = "allows to fit only"
+	msgCouldntAssignFlavors    = "couldn't assign flavors to pod set"
+	msgTopologyNoFitAny        = "doesn't allow to fit"
+	msgTopologyNoFitPartial    = "allows to fit only"
+	msgInsufficientUnusedQuota = "insufficient unused quota"
+	msgKueuePreempting         = "Pending the preemption of"
 )
 
 // IsStuckTASNoFit reports whether the Workload is pending specifically
@@ -59,10 +61,7 @@ func IsStuckTASNoFit(wl *kueue.Workload, mode config.DetectionMode) bool {
 	}
 
 	byReason := cond.Reason == reasonTopologyPlacementFailed
-	byMessage := cond.Reason == reasonPending &&
-		strings.Contains(cond.Message, msgCouldntAssignFlavors) &&
-		(strings.Contains(cond.Message, msgTopologyNoFitAny) ||
-			strings.Contains(cond.Message, msgTopologyNoFitPartial))
+	byMessage := cond.Reason == reasonPending && messageIsTASNoFit(cond.Message)
 
 	switch mode {
 	case config.DetectionReason:
@@ -72,4 +71,22 @@ func IsStuckTASNoFit(wl *kueue.Workload, mode config.DetectionMode) bool {
 	default: // config.DetectionAuto
 		return byReason || byMessage
 	}
+}
+
+// messageIsTASNoFit reports whether a kueue 0.16.x QuotaReserved=False
+// message describes a topology no-fit. Every case starts from a flavor
+// assignment failure, then names the blocker.
+func messageIsTASNoFit(msg string) bool {
+	if !strings.Contains(msg, msgCouldntAssignFlavors) {
+		return false
+	}
+	// The topology itself cannot hold the pods (or holds only some).
+	if strings.Contains(msg, msgTopologyNoFitAny) || strings.Contains(msg, msgTopologyNoFitPartial) {
+		return true
+	}
+	// Quota exists but is in use. Draining helps only while kueue has not
+	// already targeted victims of its own: once it is preempting, the
+	// quota frees up without us evicting anyone.
+	return strings.Contains(msg, msgInsufficientUnusedQuota) &&
+		!strings.Contains(msg, msgKueuePreempting)
 }

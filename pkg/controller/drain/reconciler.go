@@ -220,7 +220,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Phase 1: snapshot and selection.
-	level, parentLevel, res := r.drainLevel(ctx, wl, cq)
+	level, groupingLevel, res := r.drainLevel(ctx, wl, cq)
 	if res != nil {
 		return *res, nil
 	}
@@ -232,11 +232,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(2).Info("building snapshot", "level", level, "parentLevel", parentLevel,
+	log.V(2).Info("building snapshot", "level", level, "groupingLevel", groupingLevel,
 		"nodes", len(nodes.Items), "pods", len(pods.Items), "otherAdmittedHeroes", len(otherHeroes))
 	snap := snapshot.Build(snapshot.Input{
 		Level:       level,
-		ParentLevel: parentLevel,
+		GroupLevel:  groupingLevel,
 		Nodes:       nodes.Items,
 		Pods:        pods.Items,
 		OtherHeroes: otherHeroes,
@@ -666,11 +666,18 @@ func (r *Reconciler) clusterQueueFor(ctx context.Context, wl *kueue.Workload) (*
 	return cq, nil
 }
 
-// drainLevel resolves the topology level to drain at — the coarsest of
-// the hero's slice-required levels, validated against the Topology object
-// reached via the CQ's ResourceFlavors — and the level directly above it
-// (empty when the drain level is the topology's top level). Selection
-// keeps every drained domain inside one parent-level domain.
+// drainLevel resolves two levels: the topology level to drain at — the
+// coarsest of the hero's slice-required levels, validated against the
+// Topology object reached via the CQ's ResourceFlavors — and the level
+// selection must keep every drained domain inside (empty = no constraint).
+//
+// The grouping level comes from the hero's own podset `required` topology,
+// NOT from the position of the drain level in the hierarchy. Kueue forces
+// slices to share an ancestor only when the podset asks for one; absent
+// that, it spreads them wherever they fit. Grouping by the hierarchy's
+// next level up regardless would reject drains kueue would admit — a hero
+// needing more slice domains than any single parent holds is then reported
+// NoFeasibleDomains even with ample capacity spread across parents.
 func (r *Reconciler) drainLevel(ctx context.Context, wl *kueue.Workload, cq *kueue.ClusterQueue) (string, string, *ctrl.Result) {
 	required := hero.RequiredTopologyLevels(wl)
 	if len(required) == 0 {
@@ -691,13 +698,13 @@ func (r *Reconciler) drainLevel(ctx context.Context, wl *kueue.Workload, cq *kue
 			"required level(s) %v not in Topology hierarchy %v", required, topoLevels)
 		return "", "", &ctrl.Result{}
 	}
-	parentLevel := ""
-	for i, l := range topoLevels {
-		if l == level && i > 0 {
-			parentLevel = topoLevels[i-1]
-		}
+	groupingLevel, ok := hero.GroupingLevel(wl, topoLevels, level)
+	if !ok {
+		r.Recorder.Eventf(wl, corev1.EventTypeWarning, EventTopologyLevelUnknown,
+			"podset required level not in Topology hierarchy %v", topoLevels)
+		return "", "", &ctrl.Result{}
 	}
-	return level, parentLevel, nil
+	return level, groupingLevel, nil
 }
 
 // topologyLevels walks CQ -> ResourceFlavor -> Topology and returns the
