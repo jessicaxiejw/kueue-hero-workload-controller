@@ -137,7 +137,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return r.handleNonHero(ctx, wl, reason)
 	}
 
-	log.V(2).Info("hero identified", "hero", req.NamespacedName, "cq", cq.Name)
+	log.V(2).Info("hero identified", "cq", cq.Name)
 
 	// Check the nodes for a drain this hero already started (the taints are
 	// the record). Even when the hero no longer needs help — usually because
@@ -232,7 +232,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(2).Info("building snapshot", "level", level, "parentLevel", parentLevel,
+	log.V(2).Info("building snapshot", "level", level, "groupingLevel", groupingLevel,
 		"nodes", len(nodes.Items), "pods", len(pods.Items), "otherAdmittedHeroes", len(otherHeroes))
 	snap := snapshot.Build(snapshot.Input{
 		Level:       level,
@@ -261,7 +261,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		"podCount", heroSpec.PodCount, "cq", heroSpec.ClusterQueue,
 		"demand", formatDemand(heroSpec.Demand), "domains", len(snap.Domains))
 	for id, d := range snap.Domains {
-		log.V(2).Info("domain snapshot", "domain", id,
+		log.V(3).Info("domain snapshot", "domain", id,
 			"nodes", len(d.Nodes), "allocatableGPU", d.AllocatableGPU.String(),
 			"nonReclaimableGPU", d.NonReclaimableGPU.String(),
 			"victims", len(d.Victims), "hasOtherHero", d.HasOtherHero)
