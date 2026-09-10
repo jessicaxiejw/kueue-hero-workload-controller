@@ -36,13 +36,14 @@ type Snapshot struct {
 type Domain struct {
 	// ID is the node label value at the snapshot's level.
 	ID string
-	// Parent is the node label value at the level ABOVE the snapshot's
-	// level in the Topology hierarchy (e.g. the block a rack belongs to).
-	// Selection only combines domains sharing one Parent, keeping a
-	// multi-domain drain inside a single higher-level domain. Empty when
-	// the snapshot level is the topology's top level (no constraint) or
-	// the nodes lack the parent label.
-	Parent string
+	// Group is the node label value at Input.GroupLevel — the ancestor
+	// the hero's podset `required` topology forces all its slices to
+	// share. Selection only combines domains with the same Group, keeping
+	// such a multi-domain drain inside one required-level domain. Empty
+	// when the hero declares no `required` level (kueue is then free to
+	// spread the slices, so the drain must be too) or the nodes lack the
+	// label; all such domains land in one unconstrained group.
+	Group string
 	// Nodes are all node names labeled into this domain, usable or not.
 	// A drain taints every one of them.
 	Nodes []string
@@ -84,9 +85,11 @@ type Input struct {
 	// Level is the topology level to key domains by (from
 	// hero.RequiredTopologyLevels + CoarsestLevel).
 	Level string
-	// ParentLevel is the node label key one level above Level in the
-	// Topology hierarchy; empty when Level is the top level.
-	ParentLevel string
+	// GroupLevel is the node label key selection must keep a multi-domain
+	// drain inside, derived from the hero's podset `required` topology
+	// (hero.GroupingLevels + FinestLevel); empty when the hero requires
+	// no such ancestor.
+	GroupLevel string
 	// Nodes are the cluster's nodes (Build ignores nodes missing the
 	// Level label).
 	Nodes []corev1.Node
@@ -124,8 +127,8 @@ func Build(in Input) *Snapshot {
 
 		d := s.domain(domainID)
 		d.Nodes = append(d.Nodes, node.Name)
-		if in.ParentLevel != "" && d.Parent == "" {
-			d.Parent = node.Labels[in.ParentLevel]
+		if in.GroupLevel != "" && d.Group == "" {
+			d.Group = node.Labels[in.GroupLevel]
 		}
 		if usable {
 			if q, ok := node.Status.Allocatable[in.Cfg.GPUResourceName]; ok {

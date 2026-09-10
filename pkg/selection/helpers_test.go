@@ -52,11 +52,11 @@ func domain(id string, allocatable, nonReclaimable int64, victimWLs ...string) *
 	return domainIn("", id, allocatable, nonReclaimable, victimWLs...)
 }
 
-// domainIn builds a domain inside the given parent domain.
-func domainIn(parent, id string, allocatable, nonReclaimable int64, victimWLs ...string) *snapshot.Domain {
+// domainIn builds a domain inside the given grouping domain.
+func domainIn(group, id string, allocatable, nonReclaimable int64, victimWLs ...string) *snapshot.Domain {
 	d := &snapshot.Domain{
 		ID:                id,
-		Parent:            parent,
+		Group:             group,
 		Nodes:             []string{id + "-n1", id + "-n2"},
 		AllocatableGPU:    *resource.NewQuantity(allocatable, resource.DecimalSI),
 		NonReclaimableGPU: *resource.NewQuantity(nonReclaimable, resource.DecimalSI),

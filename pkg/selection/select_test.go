@@ -284,9 +284,10 @@ func TestSelectMixedChunkSizesLargestFirst(t *testing.T) {
 	}
 }
 
-func TestSelectSameParentConstraint(t *testing.T) {
+func TestSelectSameGroupConstraint(t *testing.T) {
 	c := cfg()
-	// 2 chunks of 32: rack-level drain, racks must share a block.
+	// 2 chunks of 32: rack-level drain for a hero whose podset `required`
+	// is the block level, so the racks must share a block.
 	h := heroSpec(32, 2)
 	wls := wlMap(
 		victimWL("cheap-1", 100, heroCQ, 2, time.Minute),
@@ -322,7 +323,30 @@ func TestSelectSameParentConstraint(t *testing.T) {
 	}
 }
 
-func TestSelectCheapestParentGroupWins(t *testing.T) {
+// A hero with no podset `required` level leaves Group empty on every
+// domain, so the whole snapshot level is one group: the drain may combine
+// domains that sit under different ancestors. Grouping by the hierarchy
+// unconditionally used to report NoFeasibleDomains here even though kueue
+// would place the slices happily.
+func TestSelectUngroupedPacksAcrossAncestors(t *testing.T) {
+	c := cfg()
+	// 3 chunks of 32, and no ancestor holds more than two domains.
+	h := heroSpec(32, 3)
+	s := snap(
+		domain("r1", 32, 0),
+		domain("r2", 32, 0),
+		domain("r3", 32, 0),
+	)
+	plan, reason := SelectDomains(s, h, nil, c, now)
+	if plan == nil {
+		t.Fatalf("ungrouped hero must pack across the level; reason = %s", reason)
+	}
+	if len(plan.DomainIDs) != 3 {
+		t.Errorf("selected %v, want all three domains", plan.DomainIDs)
+	}
+}
+
+func TestSelectCheapestGroupWins(t *testing.T) {
 	c := cfg()
 	h := heroSpec(32, 2)
 	wls := wlMap(
