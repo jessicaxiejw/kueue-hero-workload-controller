@@ -19,6 +19,10 @@ const (
 	msg016NoFitPartial = `couldn't assign flavors to pod set main: topology "cloud.provider.com/topology-block" allows to fit only 8 out of 16 pod(s)`
 	msg016MultiPodSet  = `couldn't assign flavors to pod set leader: topology "cloud.provider.com/topology-block" doesn't allow to fit any of 1 pod(s); couldn't assign flavors to pod set workers: insufficient quota for nvidia.com/gpu`
 	msg016QuotaOnly    = `couldn't assign flavors to pod set main: insufficient quota for nvidia.com/gpu in flavor gpu-flavor, request > maximum capacity (24 > 16)`
+	// Kueue appends "Pending the preemption of N workload(s)" when it has
+	// already targeted victims for the unused-quota shortfall: the quota
+	// is about to free up on its own, so draining must stay out of it.
+	msg016PreemptionPending = `couldn't assign flavors to pod set main: insufficient unused quota for nvidia.com/gpu in flavor gpu-flavor, 8 more needed. Pending the preemption of 2 workload(s)`
 )
 
 func testConfig() *config.Config {

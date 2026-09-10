@@ -137,6 +137,30 @@ func TestIsStuckTASNoFit(t *testing.T) {
 			},
 		},
 		{
+			// Kueue is already preempting to cover the unused-quota
+			// shortfall; the quota frees up without us evicting anyone.
+			name: "0.16 unused quota shortfall with preemption in flight must NOT match",
+			wl:   heroWorkload().Condition(pendingCondition("Pending", msg016PreemptionPending)).Obj(),
+			want: map[config.DetectionMode]bool{
+				config.DetectionAuto:    false,
+				config.DetectionMessage: false,
+				config.DetectionReason:  false,
+			},
+		},
+		{
+			// The preemption guard is scoped to the unused-quota branch:
+			// a topology no-fit is not fixed by kueue's preemption, so it
+			// still qualifies even when preemption is in flight.
+			name: "0.16 topology no-fit still matches with preemption in flight",
+			wl: heroWorkload().Condition(pendingCondition("Pending",
+				`couldn't assign flavors to pod set main: topology "cloud.provider.com/topology-block" doesn't allow to fit any of 16 pod(s). Pending the preemption of 2 workload(s)`)).Obj(),
+			want: map[config.DetectionMode]bool{
+				config.DetectionAuto:    true,
+				config.DetectionMessage: true,
+				config.DetectionReason:  false,
+			},
+		},
+		{
 			name: "truncated message tail still matches",
 			wl: heroWorkload().Condition(pendingCondition("Pending",
 				`couldn't assign flavors to pod set main: topology "cloud.provider.com/topology-block" doesn't allow to fit any of 16 pod(s). Total nodes: 4; excl`)).Obj(),
