@@ -24,13 +24,15 @@ const (
 	ReasonWrongPriorityClass NotHeroReason = "NotHeroPriorityClass"
 	ReasonMissingToleration  NotHeroReason = "MissingHeroTaintToleration"
 	ReasonNoPriorityClassRef NotHeroReason = "NoPriorityClassRef"
+	ReasonNoSliceTopology    NotHeroReason = "NoPodSetRequiringSliceTopology"
 )
 
 // IsHero reports whether the Workload matches all three hero identifiers:
 //
 //  1. submitted through a ClusterQueue labeled <HeroCQLabelKey>: "true"
 //  2. carrying the hero WorkloadPriorityClass name
-//  3. every podset tolerates the hero taint key
+//  3. at least one podset carries the slice pair, and every podset that
+//     does tolerates the hero taint key
 //
 // cq must be the ClusterQueue the Workload targets (spec.queueName's CQ or
 // status.admission.clusterQueue); passing it in keeps this predicate pure.
@@ -52,15 +54,28 @@ func IsHero(wl *kueue.Workload, cq *kueue.ClusterQueue, cfg *config.Config) (boo
 		return false, ReasonWrongPriorityClass
 	}
 
-	// 3. every podset tolerates the drain taint as it will actually be
-	// applied: key + the hero's own ClusterQueue as the value. Equal on
-	// the own CQ is the recommended form (it keeps the hero out of other
-	// CQs' drained domains); a bare Exists also passes here.
+	// 3. at least one podset carries the slice pair, and every one that
+	// does tolerates the drain taint as it will actually be applied: key
+	// + the hero's own ClusterQueue as the value. Equal on the own CQ is
+	// the recommended form (it keeps the hero out of other CQs' drained
+	// domains); a bare Exists also passes here. Podsets without the slice
+	// pair are never placed in a drained domain, so their tolerations are
+	// irrelevant. Without any slice-pair podset there is nothing to drain
+	// for, and admitting such a Workload to the drain queue would block
+	// every hero behind it forever.
 	heroTaint := &corev1.Taint{Key: cfg.TaintKey, Value: cq.Name, Effect: corev1.TaintEffectNoSchedule}
+	anySlice := false
 	for i := range wl.Spec.PodSets {
+		if !RequiresSliceTopology(&wl.Spec.PodSets[i]) {
+			continue
+		}
+		anySlice = true
 		if !toleratesTaint(wl.Spec.PodSets[i].Template.Spec.Tolerations, heroTaint) {
 			return false, ReasonMissingToleration
 		}
+	}
+	if !anySlice {
+		return false, ReasonNoSliceTopology
 	}
 	return true, ReasonIsHero
 }

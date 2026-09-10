@@ -90,7 +90,11 @@ func TestDemand(t *testing.T) {
 		{
 			// Plain required contributes NO demand: not a drain trigger.
 			name: "plain required contributes nothing",
-			wl:   heroWorkload().Obj(),
+			wl: utiltesting.MakeWorkload("plain-required", "ns").PodSets(
+				*utiltesting.MakePodSet("main", 16).
+					RequiredTopologyRequest(levelBlock).
+					Request("nvidia.com/gpu", "8").Obj(),
+			).Obj(),
 			want: nil,
 		},
 		{

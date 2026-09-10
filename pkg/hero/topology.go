@@ -26,19 +26,28 @@ import (
 func RequiredTopologyLevels(wl *kueue.Workload) []string {
 	var levels []string
 	for i := range wl.Spec.PodSets {
-		tr := wl.Spec.PodSets[i].TopologyRequest
-		if tr == nil {
+		if !RequiresSliceTopology(&wl.Spec.PodSets[i]) {
 			continue
 		}
-		if tr.PodSetSliceRequiredTopology == nil || *tr.PodSetSliceRequiredTopology == "" ||
-			tr.PodSetSliceSize == nil || *tr.PodSetSliceSize <= 0 {
-			continue
-		}
-		if !slices.Contains(levels, *tr.PodSetSliceRequiredTopology) {
-			levels = append(levels, *tr.PodSetSliceRequiredTopology)
+		level := *wl.Spec.PodSets[i].TopologyRequest.PodSetSliceRequiredTopology
+		if !slices.Contains(levels, level) {
+			levels = append(levels, level)
 		}
 	}
 	return levels
+}
+
+// RequiresSliceTopology reports whether a podset carries the slice pair
+// (podSetSliceRequiredTopology + podSetSliceSize) that makes it
+// drain-relevant. Only these podsets land in a drained topology domain,
+// so only they must tolerate the drain taint.
+func RequiresSliceTopology(ps *kueue.PodSet) bool {
+	tr := ps.TopologyRequest
+	if tr == nil {
+		return false
+	}
+	return tr.PodSetSliceRequiredTopology != nil && *tr.PodSetSliceRequiredTopology != "" &&
+		tr.PodSetSliceSize != nil && *tr.PodSetSliceSize > 0
 }
 
 // CoarsestLevel picks the drain level: the highest of the required levels
