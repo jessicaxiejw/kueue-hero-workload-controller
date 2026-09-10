@@ -46,8 +46,7 @@ func heroWorkload() *utiltesting.WorkloadWrapper {
 	return utiltesting.MakeWorkload("hero", "team-a").
 		WorkloadPriorityClassRef(cfg.HeroPriorityClassName).
 		Priority(1000).
-		PodSets(*utiltesting.MakePodSet("main", 16).
-			RequiredTopologyRequest("cloud.provider.com/topology-block").
+		PodSets(*slicePodSet("main", 16).
 			Request("nvidia.com/gpu", "8").
 			Toleration(heroToleration(cfg.TaintKey)).
 			Obj())

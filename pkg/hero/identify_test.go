@@ -105,13 +105,34 @@ func TestIsHero(t *testing.T) {
 			want: true,
 		},
 		{
-			// No slice pair anywhere: not drainable-for, so nothing to
-			// tolerate. The drain controller skips it on topology.
+			// No slice pair anywhere: nothing to drain for. Admitting it
+			// to the drain queue would head-of-line block real heroes,
+			// so it is not a hero.
 			name: "no slice podsets at all",
 			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
-				RequiredTopologyRequest(levelBlock).Obj()).Obj(),
-			cq:   heroCQ(),
-			want: true,
+				RequiredTopologyRequest(levelBlock).
+				Toleration(heroToleration(cfg.TaintKey)).Obj()).Obj(),
+			cq:         heroCQ(),
+			want:       false,
+			wantReason: ReasonNoSliceTopology,
+		},
+		{
+			// slice-required without slice-size is not the slice pair.
+			name: "slice topology without slice size",
+			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
+				SliceRequiredTopologyRequest(levelBlock).
+				Toleration(heroToleration(cfg.TaintKey)).Obj()).Obj(),
+			cq:         heroCQ(),
+			want:       false,
+			wantReason: ReasonNoSliceTopology,
+		},
+		{
+			name: "no topology request at all",
+			wl: heroWorkload().PodSets(*utiltesting.MakePodSet("main", 16).
+				Toleration(heroToleration(cfg.TaintKey)).Obj()).Obj(),
+			cq:         heroCQ(),
+			want:       false,
+			wantReason: ReasonNoSliceTopology,
 		},
 		{
 			name: "toleration via Exists-all wildcard",

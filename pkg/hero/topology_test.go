@@ -30,7 +30,10 @@ func TestRequiredTopologyLevels(t *testing.T) {
 			// Plain required is deliberately NOT a drain trigger: the
 			// customer contract is slice-required + slice-size.
 			name: "plain required does not trigger",
-			wl:   heroWorkload().Obj(),
+			wl: utiltesting.MakeWorkload("plain-required", "ns").PodSets(
+				*utiltesting.MakePodSet("main", 16).
+					RequiredTopologyRequest(levelBlock).Obj(),
+			).Obj(),
 			want: nil,
 		},
 		{
