@@ -93,6 +93,12 @@ type Reconciler struct {
 // Reconcile is idempotent and stateless: every call re-derives hero-ness,
 // stuckness, drain-in-flight (from node taints), and victim state (from
 // annotations) before acting.
+//
+// Log verbosity convention: V(2) is the full debug trace of the hero drain
+// pipeline — every decision taken for a workload that IS a hero. V(3) adds
+// the workloads this controller walks past (victims, deactivated
+// workloads, non-heroes), which is the level to reach for when a workload
+// you expected to be drained for produces no V(2) output at all.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("hero", req.NamespacedName)
 
@@ -105,6 +111,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// suspended: finish its suspend/reactivate cycle and never run the
 	// hero drain pipeline on it.
 	if ownerRef, ok := wl.Annotations[DeactivatedForAnnotation]; ok {
+		log.V(3).Info("workload is a victim of a drain, not a hero", "drainOwner", ownerRef,
+			"active", wl.Spec.Active == nil || *wl.Spec.Active)
 		return r.reconcileVictimEvent(ctx, wl, ownerRef)
 	}
 
@@ -117,6 +125,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// node by node (observed in e2e as a taint/untaint storm). Cleanup of
 	// any in-flight drain belongs to the janitor alone.
 	if wl.Spec.Active != nil && !*wl.Spec.Active {
+		log.V(3).Info("workload is deactivated; never drained for")
 		return ctrl.Result{}, nil
 	}
 
@@ -127,6 +136,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if isHero, reason := hero.IsHero(wl, cq, r.Cfg); !isHero {
 		return r.handleNonHero(ctx, wl, reason)
 	}
+
+	log.V(2).Info("hero identified", "hero", req.NamespacedName, "cq", cq.Name)
 
 	// Check the nodes for a drain this hero already started (the taints are
 	// the record). Even when the hero no longer needs help — usually because
@@ -139,15 +150,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	drains := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)
 	own := drains[req.NamespacedName]
 	metrics.DrainsInFlight.Set(float64(len(drains)))
+	log.V(2).Info("drain state read from node taints", "nodes", len(nodes.Items),
+		"drainsInFlight", len(drains), "ownDrain", own != nil, "ownNodes", drainNodeCount(own))
 
 	if !hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
 		if own != nil {
 			// Admitted (or otherwise unstuck) with our taints still up:
 			// untainting is the janitor's job; victims may still cycle.
+			log.V(2).Info("hero no longer stuck with own drain up; cycling victims",
+				"admitted", wl.Status.Admission != nil, "nodes", len(own.Nodes))
 			return r.cycleVictims(ctx, wl, own.Nodes)
 		}
+		log.V(2).Info("hero is not stuck on a TAS no-fit; nothing to do")
 		return ctrl.Result{}, nil
 	}
+	heroGPU := hero.GPURequest(wl, r.Cfg.GPUResourceName)
+	log.V(2).Info("hero is stuck on a TAS no-fit", "priority", hero.Priority(wl),
+		"podCount", hero.PodCount(wl), "gpuRequest", heroGPU.String())
 
 	// Phase 0: quota precondition.
 	if res, err := r.refuseOverQuota(ctx, wl, cq, own); res != nil {
@@ -174,6 +193,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	log.V(2).Info("stuck heroes cluster-wide", "count", len(stuck),
+		"workloads", len(allWorkloads.Items))
 	// One drain runs at a time, and the turn goes to whichever stuck hero
 	// is first in line (NextHero: priority, then age). There is no central
 	// queue: every stuck hero's reconcile computes the same ordering
@@ -187,9 +208,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		next := drain.NextHero(stuck)
 		isNextInLine := next != nil && next.Namespace == wl.Namespace && next.Name == wl.Name
 		if !isNextInLine {
-			log.V(1).Info("another stuck hero is ahead in line")
+			log.V(1).Info("another stuck hero is ahead in line", "next", workloadKey(next))
 			return ctrl.Result{RequeueAfter: requeueWhileQueued}, nil
 		}
+		log.V(2).Info("hero is next in line; starting drain")
 	} else {
 		// Resuming: idempotent re-selection below re-taints any node
 		// missed before a crash; a changed decision's stale taints are
@@ -210,6 +232,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	log.V(2).Info("building snapshot", "level", level, "parentLevel", parentLevel,
+		"nodes", len(nodes.Items), "pods", len(pods.Items), "otherAdmittedHeroes", len(otherHeroes))
 	snap := snapshot.Build(snapshot.Input{
 		Level:       level,
 		GroupLevel:  groupingLevel,
@@ -233,8 +257,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		ClusterQueue: cq.Name,
 		Demand:       hero.Demand(wl, r.Cfg.GPUResourceName),
 	}
+	log.V(2).Info("hero demand for selection", "priority", heroSpec.Priority,
+		"podCount", heroSpec.PodCount, "cq", heroSpec.ClusterQueue,
+		"demand", formatDemand(heroSpec.Demand), "domains", len(snap.Domains))
 	for id, d := range snap.Domains {
-		log.V(1).Info("domain snapshot", "domain", id,
+		log.V(2).Info("domain snapshot", "domain", id,
 			"nodes", len(d.Nodes), "allocatableGPU", d.AllocatableGPU.String(),
 			"nonReclaimableGPU", d.NonReclaimableGPU.String(),
 			"victims", len(d.Victims), "hasOtherHero", d.HasOtherHero)
@@ -242,6 +269,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	drainPlan, infeasibleReason := selection.SelectDomains(snap, heroSpec, workloadMap, r.Cfg, r.Now())
 	metrics.SelectionOutcomes.WithLabelValues(selectionOutcomeLabel(drainPlan, infeasibleReason)).Inc()
 	if drainPlan == nil {
+		log.V(2).Info("no drain plan", "reason", infeasibleReason, "level", level,
+			"ownDrain", own != nil)
 		if own != nil {
 			// The world changed mid-drain and the hero can no longer fit
 			// even after full eviction: abort. Suspending more victims
@@ -253,6 +282,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		r.Recorder.Event(wl, eventType, eventReason, message)
 		return result, nil
 	}
+
+	log.V(2).Info("drain plan selected", "domains", drainPlan.DomainIDs,
+		"nodes", drainPlan.Nodes, "victims", len(drainPlan.Victims),
+		"cost", drainPlan.TotalCost, "dryRun", r.Cfg.DryRun)
 
 	if r.Cfg.DryRun {
 		r.Recorder.Eventf(wl, corev1.EventTypeNormal, EventDrainPlannedDryRun,
@@ -268,6 +301,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if err := taint.EnsureTaint(ctx, r.Client, nodeName, r.Cfg.TaintKey, req.NamespacedName, cq.Name, r.Now()); err != nil {
 			return ctrl.Result{}, fmt.Errorf("tainting %s: %w", nodeName, err)
 		}
+		log.V(2).Info("node tainted for drain", "node", nodeName)
 	}
 	if own == nil { // first taint application for this hero = drain started
 		metrics.DrainsStarted.Inc()
@@ -347,6 +381,8 @@ func (r *Reconciler) cycleVictims(ctx context.Context, heroWL *kueue.Workload, t
 		suspended++
 		pending++
 	}
+	logf.FromContext(ctx).V(2).Info("victim cycle pass", "hero", ownerRef,
+		"taintedNodes", len(taintedNodes), "suspended", suspended, "pendingEviction", pending)
 	if suspended > 0 {
 		r.Recorder.Eventf(heroWL, corev1.EventTypeNormal, EventVictimsSuspended,
 			"suspended %d victim workloads on tainted nodes", suspended)
@@ -506,7 +542,7 @@ func (r *Reconciler) handleNonHero(ctx context.Context, wl *kueue.Workload, reas
 	if own := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)[key]; own != nil {
 		return r.abortDrain(ctx, wl, own, "workload is no longer a hero: "+string(reason))
 	}
-	logf.FromContext(ctx).V(2).Info("not a hero", "reason", reason)
+	logf.FromContext(ctx).V(3).Info("not a hero", "reason", reason)
 	return ctrl.Result{}, nil
 }
 
@@ -532,6 +568,32 @@ func (r *Reconciler) refuseOverQuota(ctx context.Context, wl *kueue.Workload, cq
 		return &res, err
 	}
 	return &ctrl.Result{}, nil
+}
+
+// drainNodeCount is the node count of a possibly absent drain, for logging.
+func drainNodeCount(d *taint.Drain) int {
+	if d == nil {
+		return 0
+	}
+	return len(d.Nodes)
+}
+
+// workloadKey is the key of a possibly absent workload, for logging.
+func workloadKey(wl *kueue.Workload) types.NamespacedName {
+	if wl == nil {
+		return types.NamespacedName{}
+	}
+	return types.NamespacedName{Namespace: wl.Namespace, Name: wl.Name}
+}
+
+// formatDemand renders the hero's demand chunks as "<count>x<size>" for
+// logging; resource.Quantity does not print readably on its own.
+func formatDemand(chunks []hero.Chunk) []string {
+	out := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		out = append(out, fmt.Sprintf("%dx%s", c.Count, c.Size.String()))
+	}
+	return out
 }
 
 // selectionOutcomeLabel maps a SelectDomains result to its metric label.
