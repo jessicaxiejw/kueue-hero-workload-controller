@@ -162,6 +162,27 @@ func TestGroupingLevel(t *testing.T) {
 			wantOK:     true,
 		},
 		{
+			// A leader pinned to one node alongside workers that must
+			// share a block. Taking the finest of both would pick
+			// hostname, then discard it as below the drain level and
+			// report no constraint — freeing racks in two different
+			// blocks, which kueue cannot place.
+			name: "fine required on one podset does not mask a coarser one",
+			wl: utiltesting.MakeWorkload("jobset", "ns").PodSets(
+				*utiltesting.MakePodSet("workers", 32).
+					RequiredTopologyRequest(levelBlock).
+					SliceRequiredTopologyRequest(levelRack).
+					SliceSizeTopologyRequest(16).Obj(),
+				*utiltesting.MakePodSet("leader", 1).
+					RequiredTopologyRequest(levelHost).
+					SliceRequiredTopologyRequest(levelHost).
+					SliceSizeTopologyRequest(1).Obj(),
+			).Obj(),
+			drainLevel: levelRack,
+			want:       levelBlock,
+			wantOK:     true,
+		},
+		{
 			name: "required level outside the hierarchy is a misconfiguration",
 			wl: utiltesting.MakeWorkload("bogus", "ns").PodSets(
 				*utiltesting.MakePodSet("workers", 30).
