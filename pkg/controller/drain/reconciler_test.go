@@ -467,12 +467,16 @@ var _ = Describe("drain controller", func() {
 		setupTopologyFixtures("256")
 
 		// hero-A: admitted, occupying BOTH blocks (one pod on each).
+		// Slice size 1 so a pod per block is consistent with its own
+		// topology request; the slice pair itself is what makes it a hero
+		// whose domains other heroes must leave alone.
 		heroA := utiltesting.MakeWorkload("hero-a", ns.Name).
 			Queue("hero-queue").
 			WorkloadPriorityClassRef(testCfg.HeroPriorityClassName).
 			Priority(1500).
 			PodSets(*utiltesting.MakePodSet("main", 2).
-				RequiredTopologyRequest(levelBlock).
+				SliceRequiredTopologyRequest(levelBlock).
+				SliceSizeTopologyRequest(1).
 				Request(gpuRes, "8").
 				Toleration(corev1.Toleration{Key: testCfg.TaintKey, Operator: corev1.TolerationOpExists}).
 				Obj()).
