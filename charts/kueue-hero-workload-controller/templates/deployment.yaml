@@ -51,6 +51,11 @@ spec:
         {{- range .Values.extraArgs }}
         - {{ . }}
         {{- end }}
+        {{- with .Values.goMemLimit }}
+        env:
+        - name: GOMEMLIMIT
+          value: {{ . | quote }}
+        {{- end }}
         ports:
         - name: probes
           containerPort: 8081
