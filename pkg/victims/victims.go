@@ -25,6 +25,11 @@ import (
 // we deactivated — crash-safe because it lives on the victim itself.
 const DeactivatedForAnnotation = "hero.coreweave.com/deactivated-for"
 
+// DeactivatedForField is the cache field index over
+// DeactivatedForAnnotation, registered by pkg/index. It lives here beside
+// the annotation it indexes, and because pkg/index imports this package.
+const DeactivatedForField = "hero.deactivatedFor"
+
 // EventReactivated is recorded on a victim when it is handed back.
 const EventReactivated = "ReactivatedAfterHeroDrain"
 
@@ -59,18 +64,13 @@ func Reactivate(ctx context.Context, c client.Client, recorder record.EventRecor
 // no victim stays suspended or marked past its drain's end. Returns how
 // many victims were swept.
 func SweepFor(ctx context.Context, c client.Client, recorder record.EventRecorder, owner types.NamespacedName) (int, error) {
-	ownerRef := OwnerRef(owner)
-	all := &kueue.WorkloadList{}
-	if err := c.List(ctx, all); err != nil {
+	ours := &kueue.WorkloadList{}
+	if err := c.List(ctx, ours, client.MatchingFields{DeactivatedForField: OwnerRef(owner)}); err != nil {
 		return 0, err
 	}
 	swept := 0
-	for i := range all.Items {
-		victim := &all.Items[i]
-		if victim.Annotations[DeactivatedForAnnotation] != ownerRef {
-			continue
-		}
-		if err := Reactivate(ctx, c, recorder, victim); err != nil {
+	for i := range ours.Items {
+		if err := Reactivate(ctx, c, recorder, &ours.Items[i]); err != nil {
 			return swept, err
 		}
 		swept++

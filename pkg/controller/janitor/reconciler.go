@@ -34,6 +34,7 @@ import (
 	utiltas "sigs.k8s.io/kueue/pkg/util/tas"
 
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/config"
+	"github.com/coreweave/kueue-hero-workload-controller/pkg/index"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/metrics"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/taint"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/victims"
@@ -246,13 +247,13 @@ func assignmentTouchesNode(adm *kueue.Admission, node *corev1.Node) bool {
 // kueue.x-k8s.io/workload annotation on them at job start).
 func (r *Reconciler) runningHeroPods(ctx context.Context, hero *kueue.Workload) (int32, error) {
 	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, client.InNamespace(hero.Namespace)); err != nil {
+	if err := r.List(ctx, pods, client.InNamespace(hero.Namespace),
+		client.MatchingFields{index.PodWorkload: hero.Name}); err != nil {
 		return 0, err
 	}
 	var running int32
 	for i := range pods.Items {
-		pod := &pods.Items[i]
-		if pod.Annotations[kueue.WorkloadAnnotation] == hero.Name && pod.Status.Phase == corev1.PodRunning {
+		if pods.Items[i].Status.Phase == corev1.PodRunning {
 			running++
 		}
 	}
@@ -293,11 +294,11 @@ func admittedPodCount(hero *kueue.Workload) int32 {
 // crash between count and removal recounts on retry. For an alert counter
 // a rare extra increment beats a silently missing one.
 func (r *Reconciler) teardown(ctx context.Context, nodeName string, owner types.NamespacedName, outcome string) (ctrl.Result, error) {
-	nodes := &corev1.NodeList{}
-	if err := r.List(ctx, nodes); err != nil {
+	tainted := &corev1.NodeList{}
+	if err := r.List(ctx, tainted, client.MatchingFields{index.NodeDrainTainted: index.True}); err != nil {
 		return ctrl.Result{}, err
 	}
-	drains := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)
+	drains := taint.FindDrains(tainted.Items, r.Cfg.TaintKey)
 	own := drains[owner]
 	last := own != nil && len(own.Nodes) == 1 && own.Nodes[0] == nodeName
 	if last {
@@ -390,16 +391,19 @@ func (r *Reconciler) taintedNodesOf(ctx context.Context, obj client.Object) []ct
 	return r.taintedNodesOfKey(ctx, types.NamespacedName{Namespace: wl.GetNamespace(), Name: wl.GetName()})
 }
 
+// taintedNodesOfKey resolves a hero to the nodes its drain taints. It runs
+// on every pod event in the cluster (see mapPodToTaintedNodes), so it asks
+// the drain-owner index rather than listing — and copying — every node:
+// with no drain in flight for that hero it returns nothing at all.
 func (r *Reconciler) taintedNodesOfKey(ctx context.Context, self types.NamespacedName) []ctrl.Request {
 	nodes := &corev1.NodeList{}
-	if err := r.List(ctx, nodes); err != nil {
+	if err := r.List(ctx, nodes,
+		client.MatchingFields{index.NodeDrainOwner: victims.OwnerRef(self)}); err != nil {
 		return nil
 	}
-	var reqs []ctrl.Request
+	reqs := make([]ctrl.Request, 0, len(nodes.Items))
 	for i := range nodes.Items {
-		if owner, ok := taint.Owner(&nodes.Items[i], r.Cfg.TaintKey); ok && owner == self {
-			reqs = append(reqs, ctrl.Request{NamespacedName: types.NamespacedName{Name: nodes.Items[i].Name}})
-		}
+		reqs = append(reqs, ctrl.Request{NamespacedName: types.NamespacedName{Name: nodes.Items[i].Name}})
 	}
 	return reqs
 }

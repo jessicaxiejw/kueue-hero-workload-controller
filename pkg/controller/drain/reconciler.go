@@ -33,6 +33,7 @@ import (
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/config"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/drain"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/hero"
+	"github.com/coreweave/kueue-hero-workload-controller/pkg/index"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/metrics"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/selection"
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/snapshot"
@@ -143,14 +144,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// the record). Even when the hero no longer needs help — usually because
 	// the drain worked and kueue admitted it — we may still owe cleanup:
 	// victims we suspended could still be waiting to be turned back on.
-	nodes := &corev1.NodeList{}
-	if err := r.List(ctx, nodes); err != nil {
+	drains, err := r.drainsInFlight(ctx)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-	drains := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)
 	own := drains[req.NamespacedName]
 	metrics.DrainsInFlight.Set(float64(len(drains)))
-	log.V(2).Info("drain state read from node taints", "nodes", len(nodes.Items),
+	log.V(2).Info("drain state read from node taints",
 		"drainsInFlight", len(drains), "ownDrain", own != nil, "ownNodes", drainNodeCount(own))
 
 	if !hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
@@ -224,25 +224,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if res != nil {
 		return *res, nil
 	}
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods); err != nil {
-		return ctrl.Result{}, err
-	}
-	otherHeroes, err := r.otherAdmittedHeroes(ctx, allWorkloads.Items, req.NamespacedName)
+	snap, err := r.buildSnapshot(ctx, level, groupingLevel, req.NamespacedName, allWorkloads.Items)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(2).Info("building snapshot", "level", level, "groupingLevel", groupingLevel,
-		"nodes", len(nodes.Items), "pods", len(pods.Items), "otherAdmittedHeroes", len(otherHeroes))
-	snap := snapshot.Build(snapshot.Input{
-		Level:       level,
-		GroupLevel:  groupingLevel,
-		Nodes:       nodes.Items,
-		Pods:        pods.Items,
-		OtherHeroes: otherHeroes,
-		Self:        req.NamespacedName,
-		Cfg:         r.Cfg,
-	})
 
 	workloadMap := map[types.NamespacedName]*kueue.Workload{}
 	for i := range allWorkloads.Items {
@@ -323,43 +308,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 // drained domain when they requeue).
 func (r *Reconciler) cycleVictims(ctx context.Context, heroWL *kueue.Workload, taintedNodes []string) (ctrl.Result, error) {
 	ownerRef := heroWL.Namespace + "/" + heroWL.Name
-	tainted := map[string]bool{}
-	for _, n := range taintedNodes {
-		tainted[n] = true
-	}
 
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods); err != nil {
+	occupants, err := r.victimWorkloadsOn(ctx, taintedNodes, heroWL)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 	pending := 0
 	suspended := 0
-	seen := map[types.NamespacedName]bool{}
-	for i := range pods.Items {
-		pod := &pods.Items[i]
-		if !tainted[pod.Spec.NodeName] {
-			continue
-		}
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
-		}
-		wlName, ok := pod.Annotations[kueue.WorkloadAnnotation]
-		if !ok {
-			continue
-		}
-		key := types.NamespacedName{Namespace: pod.Namespace, Name: wlName}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-
-		// Never cycle the hero its own drain serves: once admitted, its
-		// pods start on the still-tainted nodes and would otherwise be
-		// mistaken for victims.
-		if key.Namespace == heroWL.Namespace && key.Name == heroWL.Name {
-			continue
-		}
-
+	for _, key := range occupants {
 		victim := &kueue.Workload{}
 		if err := r.Get(ctx, key, victim); err != nil {
 			continue // gone = vacated
@@ -389,15 +345,12 @@ func (r *Reconciler) cycleVictims(ctx context.Context, heroWL *kueue.Workload, t
 	}
 
 	// Reactivate our evicted victims so Kueue requeues them elsewhere.
-	all := &kueue.WorkloadList{}
-	if err := r.List(ctx, all); err != nil {
+	ours := &kueue.WorkloadList{}
+	if err := r.List(ctx, ours, client.MatchingFields{index.WorkloadDeactivatedFor: ownerRef}); err != nil {
 		return ctrl.Result{}, err
 	}
-	for i := range all.Items {
-		victim := &all.Items[i]
-		if victim.Annotations[DeactivatedForAnnotation] != ownerRef {
-			continue
-		}
+	for i := range ours.Items {
+		victim := &ours.Items[i]
 		if victim.Spec.Active != nil && !*victim.Spec.Active && evictedByDeactivation(victim) {
 			if err := r.reactivateVictim(ctx, victim); err != nil {
 				return ctrl.Result{}, err
@@ -432,6 +385,90 @@ func (r *Reconciler) nudgeWhilePending(ctx context.Context, heroWL *kueue.Worklo
 			"node", nudgeNode)
 	}
 	return ctrl.Result{RequeueAfter: r.Cfg.NudgeInterval.Duration}, nil
+}
+
+// buildSnapshot slices the fleet into per-domain capacity and victims at
+// the drain level. This is the one path that needs every node and every
+// pod — capacity and disruption cost are summed per domain, so there is no
+// narrower question to ask — and it is reached only by a stuck hero that
+// won its turn, never by the per-event traffic.
+func (r *Reconciler) buildSnapshot(ctx context.Context, level, groupingLevel string,
+	self types.NamespacedName, allWorkloads []kueue.Workload,
+) (*snapshot.Snapshot, error) {
+	nodes := &corev1.NodeList{}
+	if err := r.List(ctx, nodes); err != nil {
+		return nil, err
+	}
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods); err != nil {
+		return nil, err
+	}
+	otherHeroes, err := r.otherAdmittedHeroes(ctx, allWorkloads, self)
+	if err != nil {
+		return nil, err
+	}
+	logf.FromContext(ctx).V(2).Info("building snapshot", "level", level, "groupingLevel", groupingLevel,
+		"nodes", len(nodes.Items), "pods", len(pods.Items), "otherAdmittedHeroes", len(otherHeroes))
+	return snapshot.Build(snapshot.Input{
+		Level:       level,
+		GroupLevel:  groupingLevel,
+		Nodes:       nodes.Items,
+		Pods:        pods.Items,
+		OtherHeroes: otherHeroes,
+		Self:        self,
+		Cfg:         r.Cfg,
+	}), nil
+}
+
+// victimWorkloadsOn returns the distinct Kueue workloads with live pods on
+// the tainted nodes — what this drain still has to evict. Listing per node
+// through the pod-by-node index keeps the cost proportional to the drained
+// domain: a cache List DeepCopies every object it returns, and this runs
+// every cycling pass until the domain is empty.
+func (r *Reconciler) victimWorkloadsOn(ctx context.Context, nodes []string, heroWL *kueue.Workload) ([]types.NamespacedName, error) {
+	var occupants []types.NamespacedName
+	seen := map[types.NamespacedName]bool{}
+	for _, nodeName := range nodes {
+		pods := &corev1.PodList{}
+		if err := r.List(ctx, pods, client.MatchingFields{index.PodNode: nodeName}); err != nil {
+			return nil, err
+		}
+		for i := range pods.Items {
+			pod := &pods.Items[i]
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
+			}
+			wlName, ok := pod.Annotations[kueue.WorkloadAnnotation]
+			if !ok {
+				continue
+			}
+			key := types.NamespacedName{Namespace: pod.Namespace, Name: wlName}
+			if seen[key] {
+				continue
+			}
+			// Never cycle the hero its own drain serves: once admitted, its
+			// pods start on the still-tainted nodes and would otherwise be
+			// mistaken for victims.
+			if key.Namespace == heroWL.Namespace && key.Name == heroWL.Name {
+				continue
+			}
+			seen[key] = true
+			occupants = append(occupants, key)
+		}
+	}
+	return occupants, nil
+}
+
+// drainsInFlight rebuilds every in-flight drain from the nodes carrying a
+// drain taint. Indexed rather than a full node list because this runs on
+// EVERY reconcile, before the workload is even known to be a hero: in
+// steady state it lists nothing at all.
+func (r *Reconciler) drainsInFlight(ctx context.Context) (map[types.NamespacedName]*taint.Drain, error) {
+	tainted := &corev1.NodeList{}
+	if err := r.List(ctx, tainted, client.MatchingFields{index.NodeDrainTainted: index.True}); err != nil {
+		return nil, err
+	}
+	return taint.FindDrains(tainted.Items, r.Cfg.TaintKey), nil
 }
 
 // reconcileVictimEvent runs when a watched Workload carries our
@@ -534,12 +571,12 @@ func (r *Reconciler) abortDrain(ctx context.Context, heroWL *kueue.Workload, own
 // tenants; revoked mid-drain means stop evicting for it — abort rather
 // than freeze until the timeout, even though kueue might still admit it.
 func (r *Reconciler) handleNonHero(ctx context.Context, wl *kueue.Workload, reason hero.NotHeroReason) (ctrl.Result, error) {
-	nodes := &corev1.NodeList{}
-	if err := r.List(ctx, nodes); err != nil {
+	drains, err := r.drainsInFlight(ctx)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 	key := types.NamespacedName{Namespace: wl.Namespace, Name: wl.Name}
-	if own := taint.FindDrains(nodes.Items, r.Cfg.TaintKey)[key]; own != nil {
+	if own := drains[key]; own != nil {
 		return r.abortDrain(ctx, wl, own, "workload is no longer a hero: "+string(reason))
 	}
 	logf.FromContext(ctx).V(3).Info("not a hero", "reason", reason)
@@ -842,20 +879,20 @@ func (r *Reconciler) mapNodeToOwner(ctx context.Context, obj client.Object) []ct
 }
 
 // stuckRequests enqueues every workload that looks stuck on a TAS no-fit
-// (cheap condition check; the reconcile itself re-verifies hero-ness).
+// (the stuck index runs the same cheap condition check the reconcile then
+// re-verifies along with hero-ness). Indexed rather than filtered in Go
+// because this fans out from watch events: copying every workload in the
+// cluster per event is what made the controller's memory unbounded.
 func (r *Reconciler) stuckRequests(ctx context.Context) []ctrl.Request {
-	workloads := &kueue.WorkloadList{}
-	if err := r.List(ctx, workloads); err != nil {
+	stuck := &kueue.WorkloadList{}
+	if err := r.List(ctx, stuck, client.MatchingFields{index.WorkloadStuck: index.True}); err != nil {
 		return nil
 	}
-	var reqs []ctrl.Request
-	for i := range workloads.Items {
-		wl := &workloads.Items[i]
-		if hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
-			reqs = append(reqs, ctrl.Request{NamespacedName: types.NamespacedName{
-				Namespace: wl.Namespace, Name: wl.Name,
-			}})
-		}
+	reqs := make([]ctrl.Request, 0, len(stuck.Items))
+	for i := range stuck.Items {
+		reqs = append(reqs, ctrl.Request{NamespacedName: types.NamespacedName{
+			Namespace: stuck.Items[i].Namespace, Name: stuck.Items[i].Name,
+		}})
 	}
 	return reqs
 }

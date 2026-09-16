@@ -27,6 +27,7 @@ import (
 	kueuev1beta2 "sigs.k8s.io/kueue/apis/kueue/v1beta2"
 
 	"github.com/coreweave/kueue-hero-workload-controller/pkg/config"
+	"github.com/coreweave/kueue-hero-workload-controller/pkg/index"
 )
 
 var (
@@ -77,12 +78,15 @@ var _ = BeforeSuite(func() {
 
 	testCfg = config.Default()
 
+	// Indexes as in cmd/main.go: the specs must exercise the same field
+	// indexes the controller lists through.
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,
 		Metrics:        metricsserver.Options{BindAddress: "0"},
 		LeaderElection: false,
 	})
 	Expect(err).NotTo(HaveOccurred())
+	Expect(index.Register(ctx, mgr.GetFieldIndexer(), &testCfg)).To(Succeed())
 
 	reconciler := &Reconciler{
 		Client:   mgr.GetClient(),
