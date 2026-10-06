@@ -20,12 +20,15 @@ import (
 var now = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 
 const (
-	heroCQ  = "hero-cq"
-	otherCQ = "other-cq"
+	heroCQ    = "hero-cq"
+	otherCQ   = "other-cq"
+	distantCQ = "distant-cq"
 )
 
 func cfg() *config.Config {
 	c := config.Default()
+	c.CrossCQMultiplier = 5
+	c.CrossCohortMultiplier = 10
 	return &c
 }
 
@@ -97,4 +100,12 @@ func wlMap(wls ...*kueue.Workload) map[types.NamespacedName]*kueue.Workload {
 		m[types.NamespacedName{Namespace: wl.Namespace, Name: wl.Name}] = wl
 	}
 	return m
+}
+
+func cohorts() map[string]string {
+	return map[string]string{
+		heroCQ:    "cohort-a",
+		otherCQ:   "cohort-a",
+		distantCQ: "cohort-b",
+	}
 }

@@ -32,6 +32,8 @@ type HeroSpec struct {
 	// ClusterQueue the hero is submitted through; victims from other CQs
 	// cost CrossCQMultiplier more to evict.
 	ClusterQueue string
+	// Cohort that the hero's ClusterQueue is a member of.
+	Cohort string
 	// Demand is the list of contiguous-capacity chunks the drained domain
 	// set must supply (hero.Demand).
 	Demand []hero.Chunk
@@ -116,6 +118,7 @@ func SelectDomains(
 	s *snapshot.Snapshot,
 	heroSpec HeroSpec,
 	workloads map[types.NamespacedName]*kueue.Workload,
+	cohorts map[string]string,
 	cfg *config.Config,
 	now time.Time,
 ) (*DrainPlan, InfeasibleReason) {
@@ -138,7 +141,7 @@ func SelectDomains(
 			heroBlocked = true
 			continue
 		}
-		victims := GroupVictims(d, workloads, now)
+		victims := GroupVictims(d, workloads, cohorts, now)
 		rec := reclaimable(d)
 		if rec.Sign() <= 0 || !victimsBelowHero(victims, heroSpec.Priority) {
 			continue

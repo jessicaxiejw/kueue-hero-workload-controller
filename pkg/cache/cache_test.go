@@ -364,6 +364,7 @@ func readWorkload(cfg *config.Config, wl *kueue.Workload, nodes []corev1.Node) w
 		Victims: selection.GroupVictims(
 			&snapshot.Domain{Victims: []snapshot.Victim{{Workload: heroKey}}},
 			map[types.NamespacedName]*kueue.Workload{heroKey: wl},
+			nil,
 			now,
 		),
 	}

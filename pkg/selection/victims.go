@@ -21,6 +21,7 @@ import (
 type VictimWorkload struct {
 	Key          types.NamespacedName
 	ClusterQueue string
+	Cohort       string
 	Priority     int32
 	// PodCount is the ADMITTED pod count (podSetAssignments[].count) —
 	// not spec count; partial admission (minCount) makes them differ.
@@ -35,7 +36,12 @@ type VictimWorkload struct {
 // A workload's cost fields (priority, admitted pod count, age) describe the
 // WHOLE workload, not its footprint in this domain — eviction kills all of
 // it regardless of where the rest runs.
-func GroupVictims(d *snapshot.Domain, workloads map[types.NamespacedName]*kueue.Workload, now time.Time) []VictimWorkload {
+func GroupVictims(
+	d *snapshot.Domain,
+	workloads map[types.NamespacedName]*kueue.Workload,
+	cohorts map[string]string,
+	now time.Time,
+) []VictimWorkload {
 	seen := map[types.NamespacedName]bool{}
 	out := make([]VictimWorkload, 0, len(d.Victims))
 	for i := range d.Victims {
@@ -51,6 +57,7 @@ func GroupVictims(d *snapshot.Domain, workloads map[types.NamespacedName]*kueue.
 		out = append(out, VictimWorkload{
 			Key:          key,
 			ClusterQueue: admittedClusterQueue(wl),
+			Cohort:       cohorts[admittedClusterQueue(wl)], // OK if empty
 			Priority:     specPriority(wl),
 			PodCount:     admittedPodCount(wl),
 			RunningFor:   runningFor(wl, now),

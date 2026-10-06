@@ -231,6 +231,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	cohorts, err := r.getCohortsMap(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	workloadMap := map[types.NamespacedName]*kueue.Workload{}
 	for i := range allWorkloads.Items {
@@ -243,6 +247,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Priority:     hero.Priority(wl),
 		PodCount:     hero.PodCount(wl),
 		ClusterQueue: cq.Name,
+		Cohort:       string(cq.Spec.CohortName),
 		Demand:       hero.Demand(wl, r.Cfg.GPUResourceName),
 	}
 	log.V(2).Info("hero demand for selection", "priority", heroSpec.Priority,
@@ -254,7 +259,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"nonReclaimableGPU", d.NonReclaimableGPU.String(),
 			"victims", len(d.Victims), "hasOtherHero", d.HasOtherHero)
 	}
-	drainPlan, infeasibleReason := selection.SelectDomains(snap, heroSpec, workloadMap, r.Cfg, r.Now())
+	drainPlan, infeasibleReason := selection.SelectDomains(snap, heroSpec, workloadMap, cohorts, r.Cfg, r.Now())
 	metrics.SelectionOutcomes.WithLabelValues(selectionOutcomeLabel(drainPlan, infeasibleReason)).Inc()
 	if drainPlan == nil {
 		log.V(2).Info("no drain plan", "reason", infeasibleReason, "level", level,
@@ -421,6 +426,21 @@ func (r *Reconciler) buildSnapshot(ctx context.Context, level, groupingLevel str
 		Self:        self,
 		Cfg:         r.Cfg,
 	}), nil
+}
+
+// getCohortsMap builds a map of ClusterQueue names to
+func (r *Reconciler) getCohortsMap(ctx context.Context) (map[string]string, error) {
+	allClusterQueues := &kueue.ClusterQueueList{}
+	if err := r.List(ctx, allClusterQueues); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string, len(allClusterQueues.Items))
+	for _, cq := range allClusterQueues.Items {
+		result[cq.Name] = string(cq.Spec.CohortName)
+	}
+
+	return result, nil
 }
 
 // victimWorkloadsOn returns the distinct Kueue workloads with live pods on
@@ -910,6 +930,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.Now == nil {
 		r.Now = time.Now
 	}
+
+	// Eagerly cache clusterqueues
+	_, err := mgr.GetCache().GetInformer(context.Background(), &kueue.ClusterQueue{})
+	if err != nil {
+		return err
+	}
+
 	builder := ctrl.NewControllerManagedBy(mgr).
 		Named("hero-drain").
 		For(&kueue.Workload{}).
@@ -917,12 +944,14 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(r.mapNodeToOwner),
 			ctrlbuilder.WithPredicates(r.nodeAffectsPlacement())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1})
+
 	if r.Nudge != nil {
 		builder = builder.WatchesRawSource(source.Channel(r.Nudge,
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []ctrl.Request {
 				return r.stuckRequests(ctx)
 			})))
 	}
+
 	return builder.Complete(r)
 }
 

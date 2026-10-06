@@ -14,7 +14,7 @@ import (
 func TestGroupVictimsDropsDangling(t *testing.T) {
 	d := domain("b1", 128, 0, "gone", "present")
 	wls := wlMap(victimWL("present", 100, "cq", 4, time.Hour))
-	got := GroupVictims(d, wls, now)
+	got := GroupVictims(d, wls, nil, now)
 	if len(got) != 1 || got[0].Key.Name != "present" {
 		t.Errorf("GroupVictims = %+v, want only 'present'", got)
 	}
@@ -25,7 +25,7 @@ func TestGroupVictimsAdmittedCount(t *testing.T) {
 	// Admitted at 4 pods (partial admission), spec would say 10.
 	wl := victimWL("partial", 100, "cq", 4, time.Hour)
 	wl.Spec.PodSets = []kueue.PodSet{{Name: "main", Count: 10}}
-	got := GroupVictims(d, wlMap(wl), now)
+	got := GroupVictims(d, wlMap(wl), nil, now)
 	if len(got) != 1 || got[0].PodCount != 4 {
 		t.Errorf("PodCount = %+v, want admitted 4 not spec 10", got)
 	}

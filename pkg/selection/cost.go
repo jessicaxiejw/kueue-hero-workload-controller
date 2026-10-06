@@ -38,5 +38,9 @@ func Cost(v VictimWorkload, hero HeroSpec, cfg *config.Config) float64 {
 	if v.ClusterQueue != hero.ClusterQueue {
 		mRel = cfg.CrossCQMultiplier
 	}
+	if v.Cohort != hero.Cohort && v.Cohort != "" && hero.Cohort != "" {
+		mRel = cfg.CrossCohortMultiplier
+	}
+
 	return mRel * (cfg.Weights.Priority*pHat + cfg.Weights.PodCount*nHat + cfg.Weights.Runtime*rHat)
 }

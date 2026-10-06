@@ -30,7 +30,7 @@ func TestSelectSingleDomain(t *testing.T) {
 		domain("b3", 64, 0),            // too small for the chunk
 	)
 
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil {
 		t.Fatalf("outcome = %s", reason)
 	}
@@ -51,7 +51,7 @@ func TestSelectEmptyDomainWins(t *testing.T) {
 		domain("b1", 256, 0, "v"),
 		domain("b2", 128, 0), // empty: zero cost
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil || len(plan.DomainIDs) != 1 || plan.DomainIDs[0] != "b2" {
 		t.Errorf("selected %v (%s), want [b2]", plan.DomainIDs, reason)
 	}
@@ -68,7 +68,7 @@ func TestSelectDeterministicTieBreak(t *testing.T) {
 		domain("b1", 128, 0),
 	)
 	for range 5 {
-		plan, reason := SelectDomains(s, h, nil, c, now)
+		plan, reason := SelectDomains(s, h, nil, nil, c, now)
 		if plan == nil || plan.DomainIDs[0] != "b1" {
 			t.Fatalf("tie-break not lexicographic: %v (%s)", plan.DomainIDs, reason)
 		}
@@ -81,7 +81,7 @@ func TestSelectVictimPriorityBlocks(t *testing.T) {
 	wls := wlMap(victimWL("equal-prio", 1000, otherCQ, 2, time.Minute))
 
 	s := snap(domain("b1", 256, 0, "equal-prio"))
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan != nil || reason != NoFeasibleDomains {
 		t.Errorf("outcome = %s, want NoFeasibleDomains (victim priority >= hero)", reason)
 	}
@@ -92,7 +92,7 @@ func TestSelectNonReclaimableShrinksCapacity(t *testing.T) {
 	h := heroSpec(128, 1)
 	// 160 allocatable - 64 non-reclaimable = 96 < 128: infeasible.
 	s := snap(domain("b1", 160, 64))
-	plan, reason := SelectDomains(s, h, nil, c, now)
+	plan, reason := SelectDomains(s, h, nil, nil, c, now)
 	if plan != nil || reason != NoFeasibleDomains {
 		t.Errorf("outcome = %s, want NoFeasibleDomains", reason)
 	}
@@ -105,13 +105,13 @@ func TestSelectHeroOccupiedOutcome(t *testing.T) {
 	occupied.HasOtherHero = true
 
 	// Only capacity-feasible domain hosts another hero.
-	plan, reason := SelectDomains(snap(occupied, domain("b2", 64, 0)), h, nil, c, now)
+	plan, reason := SelectDomains(snap(occupied, domain("b2", 64, 0)), h, nil, nil, c, now)
 	if plan != nil || reason != AllFeasibleHeroOccupied {
 		t.Errorf("outcome = %s, want AllFeasibleHeroOccupied", reason)
 	}
 
 	// A hero-free feasible domain exists: hero-occupied one is skipped.
-	plan, reason = SelectDomains(snap(occupied, domain("b3", 128, 0)), h, nil, c, now)
+	plan, reason = SelectDomains(snap(occupied, domain("b3", 128, 0)), h, nil, nil, c, now)
 	if plan == nil || plan.DomainIDs[0] != "b3" {
 		t.Errorf("selected %v (%s), want [b3]", plan.DomainIDs, reason)
 	}
@@ -124,7 +124,7 @@ func TestSelectHeroOccupiedOutcome(t *testing.T) {
 	occupiedWithPods := domain("b1", 256, 0, "occupier")
 	occupiedWithPods.HasOtherHero = true
 	wls := wlMap(victimWL("occupier", h.Priority, otherCQ, 128, time.Hour))
-	plan, reason = SelectDomains(snap(occupiedWithPods, domain("b2", 64, 0)), h, wls, c, now)
+	plan, reason = SelectDomains(snap(occupiedWithPods, domain("b2", 64, 0)), h, wls, nil, c, now)
 	if plan != nil || reason != AllFeasibleHeroOccupied {
 		t.Errorf("outcome = %s, want AllFeasibleHeroOccupied when occupier's own pods are the victims", reason)
 	}
@@ -149,7 +149,7 @@ func TestSelectSliceMultiDomain(t *testing.T) {
 		domain("r5", 24, 0),          // fragment: 0 chunks, excluded
 	)
 
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil {
 		t.Fatalf("outcome = %s", reason)
 	}
@@ -187,7 +187,7 @@ func TestSelectMultiChunksDomainPreferred(t *testing.T) {
 		domain("r2", 32, 0, "b-wl"),
 		domain("r3", 32, 0, "c-wl"),
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil || len(plan.DomainIDs) != 1 || plan.DomainIDs[0] != bigDomain {
 		t.Errorf("selected %v (%s), want [big]", plan.DomainIDs, reason)
 	}
@@ -197,7 +197,7 @@ func TestSelectInsufficientChunks(t *testing.T) {
 	c := cfg()
 	h := heroSpec(32, 3)
 	s := snap(domain("r1", 32, 0), domain("r2", 32, 0)) // only 2 of 3
-	plan, reason := SelectDomains(s, h, nil, c, now)
+	plan, reason := SelectDomains(s, h, nil, nil, c, now)
 	if plan != nil || reason != NoFeasibleDomains {
 		t.Errorf("outcome = %s, want NoFeasibleDomains", reason)
 	}
@@ -213,7 +213,7 @@ func TestSelectDedupesSpanningWorkload(t *testing.T) {
 		domain("r1", 32, 0, "spanning"),
 		domain("r2", 32, 0, "spanning"),
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil {
 		t.Fatalf("outcome = %s", reason)
 	}
@@ -239,7 +239,7 @@ func TestSelectGreedyFitPacksOneRack(t *testing.T) {
 		domain(bigDomain, 96, 0, "big-wl"),
 		domain("r1", 32, 0, "small-wl"),
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil || len(plan.DomainIDs) != 1 || plan.DomainIDs[0] != bigDomain {
 		t.Errorf("selected %v (%s), want [big] only", plan.DomainIDs, reason)
 	}
@@ -251,7 +251,7 @@ func TestSelectGreedyFitPacksOneRack(t *testing.T) {
 		domain("r3", 32, 0),
 		domain("r4", 24, 0), // fragment
 	)
-	plan, reason = SelectDomains(s, h, nil, c, now)
+	plan, reason = SelectDomains(s, h, nil, nil, c, now)
 	if plan == nil || len(plan.DomainIDs) != 3 {
 		t.Fatalf("selected %v (%s), want 3 racks", plan.DomainIDs, reason)
 	}
@@ -275,7 +275,7 @@ func TestSelectMixedChunkSizesLargestFirst(t *testing.T) {
 		domain(bigDomain, 129, 0),
 		domain("tiny", 8, 0),
 	)
-	plan, reason := SelectDomains(s, h, nil, c, now)
+	plan, reason := SelectDomains(s, h, nil, nil, c, now)
 	if plan == nil {
 		t.Fatalf("outcome = %s", reason)
 	}
@@ -303,7 +303,7 @@ func TestSelectSameGroupConstraint(t *testing.T) {
 		domainIn("block-2", "r2", 32, 0, "cheap-2"),
 		domainIn("block-2", "r3", 32, 0, "pricey"),
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil {
 		t.Fatalf("reason = %s", reason)
 	}
@@ -317,7 +317,7 @@ func TestSelectSameGroupConstraint(t *testing.T) {
 		domainIn("block-1", "r1", 32, 0),
 		domainIn("block-2", "r2", 32, 0),
 	)
-	plan, reason = SelectDomains(s, h, nil, c, now)
+	plan, reason = SelectDomains(s, h, nil, nil, c, now)
 	if plan != nil || reason != NoFeasibleDomains {
 		t.Errorf("cross-block cover must be infeasible; got plan=%v reason=%s", plan, reason)
 	}
@@ -337,7 +337,7 @@ func TestSelectUngroupedPacksAcrossAncestors(t *testing.T) {
 		domain("r2", 32, 0),
 		domain("r3", 32, 0),
 	)
-	plan, reason := SelectDomains(s, h, nil, c, now)
+	plan, reason := SelectDomains(s, h, nil, nil, c, now)
 	if plan == nil {
 		t.Fatalf("ungrouped hero must pack across the level; reason = %s", reason)
 	}
@@ -352,20 +352,23 @@ func TestSelectCheapestGroupWins(t *testing.T) {
 	wls := wlMap(
 		victimWL("mild", 300, heroCQ, 4, time.Hour),
 		victimWL("harsh", 900, otherCQ, 200, 40*time.Hour),
+		victimWL("harsher", 900, distantCQ, 200, 39*time.Hour),
 	)
-	// Both blocks can cover; block-1's victims cost less.
+	// Any block can cover; block-1's victims cost less.
 	s := snap(
 		domainIn("block-1", "r1", 32, 0, "mild"),
 		domainIn("block-1", "r2", 32, 0),
 		domainIn("block-2", "r3", 32, 0, "harsh"),
 		domainIn("block-2", "r4", 32, 0),
+		domainIn("block-3", "r5", 32, 0, "harsher"),
+		domainIn("block-3", "r6", 32, 0),
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, cohorts(), c, now)
 	if plan == nil {
 		t.Fatalf("reason = %s", reason)
 	}
 	for _, id := range plan.DomainIDs {
-		if id == "r3" || id == "r4" {
+		if id == "r3" || id == "r4" || id == "r5" || id == "r6" {
 			t.Errorf("selected %v from the pricier block", plan.DomainIDs)
 		}
 	}
@@ -383,7 +386,7 @@ func TestSelectNeverTaintsExtraDomainWhenChunkFits(t *testing.T) {
 		domain("d2", 640, 0),     // empty and enormous — still must not be tainted
 		domain("d3", 64, 0),      // empty twin — still must not be tainted
 	)
-	plan, reason := SelectDomains(s, h, wls, c, now)
+	plan, reason := SelectDomains(s, h, wls, nil, c, now)
 	if plan == nil {
 		t.Fatalf("outcome = %s", reason)
 	}

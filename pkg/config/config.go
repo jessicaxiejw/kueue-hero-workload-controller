@@ -113,6 +113,10 @@ type Config struct {
 	// CrossCQMultiplier scales the cost of evicting a victim admitted
 	// through a different ClusterQueue than the hero's (same-CQ is 1).
 	CrossCQMultiplier float64 `json:"crossCQMultiplier"`
+	// CrossCohortMultiplier scales the cost of evicting a victim admitted
+	// through a ClusterQueue in a different Cohort than the hero's (same-CQ
+	// is 1).
+	CrossCohortMultiplier float64 `json:"crossCohortMultiplier"`
 	// StuckDetection selects the TAS no-fit detection strategy; see
 	// DetectionMode for the kueue version differences behind it. It is a
 	// config knob (not hardcoded) because message matching is the
@@ -143,6 +147,7 @@ func Default() Config {
 		Weights:               Weights{Priority: 0.7, PodCount: 0.2, Runtime: 0.1},
 		RuntimeHalfLife:       metav1.Duration{Duration: 6 * time.Hour},
 		CrossCQMultiplier:     5,
+		CrossCohortMultiplier: 10,
 		StuckDetection:        DetectionAuto,
 		DryRun:                false,
 		NonBlockingPodLabels:  map[string]string{},
@@ -221,6 +226,9 @@ func (c *Config) Validate() error {
 	}
 	if c.CrossCQMultiplier < 1 {
 		errs = append(errs, "crossCQMultiplier must be >= 1 (same-CQ cost is 1)")
+	}
+	if c.CrossCohortMultiplier < 1 {
+		errs = append(errs, "crossCohortMultiplier must be >= 1 (same-CQ cost is 1)")
 	}
 	switch c.StuckDetection {
 	case DetectionAuto, DetectionMessage, DetectionReason:

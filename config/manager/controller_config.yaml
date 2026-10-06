@@ -10,7 +10,8 @@ weights:
   podCount: 0.2
   runtime: 0.1
 runtimeHalfLife: 6h
-crossCQMultiplier: 5
+crossCQMultiplier: 2
+crossCohortMultiplier: 5
 stuckDetection: auto # auto | message | reason
 dryRun: false
 nonBlockingPodLabels: {}
