@@ -186,6 +186,13 @@ func createUnstuckHero(name string, pods int, priority int32) *kueue.Workload {
 // createVictim creates an admitted victim workload with running pods on
 // the given nodes (one pod per entry, 8 GPUs each).
 func createVictim(name string, priority int32, nodes ...string) *kueue.Workload {
+	return createAdmitted(name, victimCQ, priority, nodes...)
+}
+
+// createAdmitted creates a workload admitted to the given ClusterQueue —
+// consuming 8 GPUs of its quota per pod — with running pods on the given
+// nodes (one pod per entry).
+func createAdmitted(name, cq string, priority int32, nodes ...string) *kueue.Workload {
 	wl := utiltesting.MakeWorkload(name, ns.Name).
 		Priority(priority).
 		PodSets(*utiltesting.MakePodSet("main", len(nodes)).
@@ -197,7 +204,7 @@ func createVictim(name string, priority int32, nodes ...string) *kueue.Workload 
 	for _, n := range nodes {
 		perHost[n]++
 	}
-	Expect(fakekueue.Admit(ctx, k8sClient, wl, victimCQ, perHost)).To(Succeed())
+	Expect(fakekueue.Admit(ctx, k8sClient, wl, cq, perHost)).To(Succeed())
 
 	for i, node := range nodes {
 		pod := testingpod.MakePod(fmt.Sprintf("%s-%d", name, i), ns.Name).
@@ -209,6 +216,28 @@ func createVictim(name string, priority int32, nodes ...string) *kueue.Workload 
 		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 	}
 	return wl
+}
+
+// createAdmittedHero creates a hero admitted to the hero CQ with one
+// 8-GPU pod on each given node — holding 8 GPUs of the CQ's quota per pod.
+func createAdmittedHero(name string, priority int32, nodes ...string) {
+	wl := utiltesting.MakeWorkload(name, ns.Name).
+		Queue("hero-queue").
+		WorkloadPriorityClassRef(testCfg.HeroPriorityClassName).
+		Priority(priority).
+		PodSets(*utiltesting.MakePodSet("main", len(nodes)).
+			SliceRequiredTopologyRequest(levelBlock).
+			SliceSizeTopologyRequest(1).
+			Request(gpuRes, "8").
+			Toleration(corev1.Toleration{Key: testCfg.TaintKey, Operator: corev1.TolerationOpExists}).
+			Obj()).
+		Obj()
+	Expect(k8sClient.Create(ctx, wl)).To(Succeed())
+	perHost := map[string]int32{}
+	for _, n := range nodes {
+		perHost[n]++
+	}
+	Expect(fakekueue.Admit(ctx, k8sClient, wl, heroCQName, perHost)).To(Succeed())
 }
 
 func taintsOwnedBy(owner types.NamespacedName) func() []string {
@@ -390,6 +419,50 @@ var _ = Describe("drain controller", func() {
 
 		Consistently(taintsOwnedBy(keyOf(heroWL)), "3s").Should(BeEmpty())
 		Eventually(eventsFor(heroWL)).Should(ContainElement(EventHeroExceedsQuota))
+	})
+
+	It("refuses to drain when admitting the hero would push its CQ's heroes over nominal quota", func() {
+		// The hero alone fits the nominal quota (16 of 16), but an
+		// admitted hero of the same CQ already holds 8 of it: kueue
+		// cannot admit both without borrowing, so draining cannot help.
+		setupTopologyFixtures("16")
+		victim := createVictim("small-victim", 100, nodeB1N1, nodeB1N2)
+		createAdmittedHero("admitted-hero", 1000, "b2-n1")
+		heroWL := createHero("hero-cq-full", 2, 1000)
+
+		Eventually(eventsFor(heroWL)).Should(ContainElement(EventHeroExceedsQuota))
+		Consistently(taintsOwnedBy(keyOf(heroWL)), "3s").Should(BeEmpty())
+		v := getWL(keyOf(victim))()
+		Expect(v.Spec.Active == nil || *v.Spec.Active).To(BeTrue())
+		Expect(v.Annotations).NotTo(HaveKey(DeactivatedForAnnotation))
+	})
+
+	It("does not let a hero over its CQ's remaining quota block a hero that fits", func() {
+		// 8 of 16 held by an admitted hero: the 16-GPU hero is over
+		// quota, the 8-GPU hero fits. The over-quota hero must not hold
+		// the drain line even though it has the higher priority.
+		setupTopologyFixtures("16")
+		createAdmittedHero("admitted-hero", 1000, "b2-n1")
+		big := createHero("hero-big", 2, 2000)
+		Eventually(eventsFor(big)).Should(ContainElement(EventHeroExceedsQuota))
+
+		small := createHero("hero-small", 1, 1000)
+		Eventually(taintsOwnedBy(keyOf(small))).ShouldNot(BeEmpty())
+		Expect(taintsOwnedBy(keyOf(big))()).To(BeEmpty())
+	})
+
+	It("still drains when only non-hero workloads of the CQ hold its quota", func() {
+		// Non-hero usage does not count against the hero: those workloads
+		// sit below the hero priority class and kueue reclaims their
+		// quota by within-CQ preemption. 8 of 16 held by a non-hero plus
+		// the 16-GPU hero is still a drain.
+		setupTopologyFixtures("16")
+		createVictim("small-victim", 100, nodeB1N1, nodeB1N2)
+		createAdmitted("non-hero-neighbor", heroCQName, 500, "b2-n1")
+		heroWL := createHero("hero-beside-non-hero", 2, 1000)
+
+		Eventually(taintsOwnedBy(keyOf(heroWL))).ShouldNot(BeEmpty())
+		Expect(eventsFor(heroWL)()).NotTo(ContainElement(EventHeroExceedsQuota))
 	})
 
 	It("queues a second hero while a foreign drain is in flight", func() {
@@ -597,6 +670,35 @@ var _ = Describe("drain controller", func() {
 
 		By("aborting: victim reactivated, taints removed")
 		Eventually(eventsFor(heroWL)).Should(ContainElement(EventDrainAborted))
+		Eventually(func() bool {
+			v := getWL(keyOf(victim))()
+			return v.Spec.Active != nil && *v.Spec.Active
+		}).Should(BeTrue())
+		Eventually(taintsOwnedBy(heroKey)).Should(BeEmpty())
+	})
+
+	It("aborts the drain when an admitted hero takes the hero's headroom mid-drain", func() {
+		setupTopologyFixtures("24")
+		victim := createVictim("usage-victim", 100, nodeB1N1, nodeB1N2)
+		// Equal-priority blocker rules b2 out (see the demote spec).
+		createVictim("b2-blocker", 1000, "b2-n1", "b2-n2")
+		heroWL := createHero("hero-usage-grows", 2, 1000)
+		heroKey := keyOf(heroWL)
+
+		Eventually(taintsOwnedBy(heroKey)).Should(ConsistOf(nodeB1N1, nodeB1N2))
+
+		By("admitting another hero to the CQ, leaving only 8 GPUs of quota")
+		createAdmittedHero("latecomer-hero", 1000, "b2-n1", "b2-n2")
+		wl := getWL(heroKey)()
+		patch := client.MergeFrom(wl.DeepCopy())
+		if wl.Annotations == nil {
+			wl.Annotations = map[string]string{}
+		}
+		wl.Annotations["test/nudge"] = "1"
+		Expect(k8sClient.Patch(ctx, wl, patch)).To(Succeed())
+
+		By("aborting: victim reactivated, taints removed")
+		Eventually(eventsFor(heroWL)).Should(ContainElements(EventHeroExceedsQuota, EventDrainAborted))
 		Eventually(func() bool {
 			v := getWL(keyOf(victim))()
 			return v.Spec.Active != nil && *v.Spec.Active

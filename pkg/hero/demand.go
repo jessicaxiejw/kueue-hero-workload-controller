@@ -99,6 +99,39 @@ func GPURequest(wl *kueue.Workload, gpu corev1.ResourceName) resource.Quantity {
 	return total
 }
 
+// AdmittedGPUUsage is the GPU quota the workload currently holds in its
+// admitted ClusterQueue: per podset assignment, kueue's recorded
+// resourceUsage when present, else the podset's per-pod request times the
+// admitted count (falling back to the spec count). Zero when not admitted.
+func AdmittedGPUUsage(wl *kueue.Workload, gpu corev1.ResourceName) resource.Quantity {
+	total := resource.Quantity{}
+	if wl.Status.Admission == nil {
+		return total
+	}
+	for i := range wl.Status.Admission.PodSetAssignments {
+		psa := &wl.Status.Admission.PodSetAssignments[i]
+		if q, ok := psa.ResourceUsage[gpu]; ok {
+			total.Add(q)
+			continue
+		}
+		for j := range wl.Spec.PodSets {
+			ps := &wl.Spec.PodSets[j]
+			if ps.Name != psa.Name {
+				continue
+			}
+			count := ps.Count
+			if psa.Count != nil {
+				count = *psa.Count
+			}
+			perPod := podGPURequestOf(ps, gpu)
+			for range count {
+				total.Add(perPod)
+			}
+		}
+	}
+	return total
+}
+
 // PodCount is the workload's total pod count across podsets (the
 // heroPodCount term of the cost normalization).
 func PodCount(wl *kueue.Workload) int32 {

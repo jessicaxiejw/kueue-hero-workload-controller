@@ -113,7 +113,7 @@ func pendingWorkload(message string, finished bool) *kueue.Workload {
 
 func TestRegisterRegistersEveryIndexOnce(t *testing.T) {
 	fi := registered(t)
-	if got, want := len(fi.fns), 6; got != want {
+	if got, want := len(fi.fns), 7; got != want {
 		t.Errorf("Register wired %d indexes, want %d", got, want)
 	}
 }
@@ -258,5 +258,32 @@ func TestWorkloadDeactivatedForIndex(t *testing.T) {
 	}
 	if got := fi.extract(t, unmarked, WorkloadDeactivatedFor); got != nil {
 		t.Errorf("%s on an unmarked workload = %v, want nil", WorkloadDeactivatedFor, got)
+	}
+}
+
+func TestWorkloadAdmittedClusterQueueIndex(t *testing.T) {
+	const cq = "admitted-cq"
+	admitted := func(finished bool) *kueue.Workload {
+		wl := pendingWorkload("", finished)
+		wl.Status.Admission = &kueue.Admission{ClusterQueue: cq}
+		return wl
+	}
+	cases := []struct {
+		name string
+		wl   *kueue.Workload
+		want []string
+	}{
+		{name: "admitted workload holds its CQ's quota", wl: admitted(false), want: []string{cq}},
+		{name: "pending workload holds no quota", wl: pendingWorkload(tasNoFit, false)},
+		{name: "finished workload released its quota", wl: admitted(true)},
+	}
+
+	fi := registered(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := fi.extract(t, tc.wl, WorkloadAdmittedClusterQueue); !slices.Equal(got, tc.want) {
+				t.Errorf("%s = %v, want %v", WorkloadAdmittedClusterQueue, got, tc.want)
+			}
+		})
 	}
 }

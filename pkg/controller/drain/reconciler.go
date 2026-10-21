@@ -588,26 +588,78 @@ func (r *Reconciler) handleNonHero(ctx context.Context, wl *kueue.Workload, reas
 
 // refuseOverQuota is the Phase 0 quota precondition — the customer
 // commitment that a hero always fits its CQ's nominal quota. Draining can
-// only fix physical placement, never quota, so an over-quota hero gets a
-// warning event instead of a drain (and violation risks the hero itself
-// being preempted after admission). Nil result = within quota, continue
-// reconciling; non-nil = stop with that result. If a drain is already in
-// flight (quota shrank mid-drain), it is aborted: over nominal quota kueue
-// will never admit the hero however empty the domain gets.
+// only fix physical placement, never quota, so a hero whose admission
+// would push its CQ past nominal quota — its own request alone, or on top
+// of what the CQ's already-admitted heroes hold — gets a warning
+// event instead of a drain (heroes never borrow, and violation risks the
+// hero itself being preempted after admission). Nil result = within
+// quota, continue reconciling; non-nil = stop with that result. If a
+// drain is already in flight (quota shrank or CQ usage grew mid-drain),
+// it is aborted: over nominal quota kueue will never admit the hero
+// however empty the domain gets.
 func (r *Reconciler) refuseOverQuota(ctx context.Context, wl *kueue.Workload, cq *kueue.ClusterQueue, own *taint.Drain) (*ctrl.Result, error) {
-	heroGPU := hero.GPURequest(wl, r.Cfg.GPUResourceName)
-	nominal := gpuNominalQuota(cq, r.Cfg.GPUResourceName)
-	if heroGPU.Cmp(nominal) <= 0 {
+	q, err := r.quotaFor(ctx, wl, cq)
+	if err != nil {
+		return &ctrl.Result{}, err
+	}
+	if !q.exceeded() {
 		return nil, nil
 	}
+	logf.FromContext(ctx).V(2).Info("hero exceeds ClusterQueue nominal quota",
+		"cq", cq.Name, "heroGPU", q.hero.String(), "heroUsedGPU", q.used.String(), "nominalGPU", q.nominal.String())
 	r.Recorder.Eventf(wl, corev1.EventTypeWarning, EventHeroExceedsQuota,
-		"hero requests %s %s but ClusterQueue %s nominal quota is %s; draining cannot help",
-		heroGPU.String(), r.Cfg.GPUResourceName, cq.Name, nominal.String())
+		"hero requests %s %s but ClusterQueue %s nominal quota is %s with %s already held by admitted heroes; draining cannot help",
+		q.hero.String(), r.Cfg.GPUResourceName, cq.Name, q.nominal.String(), q.used.String())
 	if own != nil {
 		res, err := r.abortDrain(ctx, wl, own, "hero exceeds nominal quota")
 		return &res, err
 	}
-	return &ctrl.Result{}, nil
+	if q.hero.Cmp(q.nominal) > 0 {
+		// Static misconfiguration: only a quota change helps.
+		return &ctrl.Result{}, nil
+	}
+	// Admitted heroes hold the rest of the quota; it frees as they end.
+	return &ctrl.Result{RequeueAfter: requeueWhileQueued}, nil
+}
+
+// heroQuota is a hero's GPU request against its CQ's nominal quota and
+// the quota the CQ's other admitted heroes already hold.
+type heroQuota struct {
+	hero, used, nominal resource.Quantity
+}
+
+func (q heroQuota) exceeded() bool {
+	need := q.hero.DeepCopy()
+	need.Add(q.used)
+	return need.Cmp(q.nominal) > 0
+}
+
+// quotaFor reads the hero's quota position in its CQ. Only admitted
+// heroes count as used: the nominal-quota commitment is sized for heroes,
+// and the CQ's non-hero workloads sit below the hero priority class, so
+// kueue reclaims their quota for the hero itself (within-CQ preemption).
+// Usage comes from the admitted workloads rather than the CQ status,
+// which kueue updates asynchronously; the hero itself is excluded.
+func (r *Reconciler) quotaFor(ctx context.Context, wl *kueue.Workload, cq *kueue.ClusterQueue) (heroQuota, error) {
+	q := heroQuota{
+		hero:    hero.GPURequest(wl, r.Cfg.GPUResourceName),
+		nominal: gpuNominalQuota(cq, r.Cfg.GPUResourceName),
+	}
+	admitted := &kueue.WorkloadList{}
+	if err := r.List(ctx, admitted, client.MatchingFields{index.WorkloadAdmittedClusterQueue: cq.Name}); err != nil {
+		return q, err
+	}
+	for i := range admitted.Items {
+		other := &admitted.Items[i]
+		if other.Namespace == wl.Namespace && other.Name == wl.Name {
+			continue
+		}
+		if ok, _ := hero.IsHero(other, cq, r.Cfg); !ok {
+			continue
+		}
+		q.used.Add(hero.AdmittedGPUUsage(other, r.Cfg.GPUResourceName))
+	}
+	return q, nil
 }
 
 // drainNodeCount is the node count of a possibly absent drain, for logging.
@@ -774,7 +826,9 @@ func (r *Reconciler) topologyLevels(ctx context.Context, cq *kueue.ClusterQueue)
 }
 
 // stuckHeroes filters the workload list to stuck heroes (cluster-wide,
-// across every hero-enabled CQ — serialization is per cluster).
+// across every hero-enabled CQ — serialization is per cluster) that are
+// within their CQ's quota: an over-quota hero is refused a drain, so
+// letting it head the NextHero line would block every other hero.
 func (r *Reconciler) stuckHeroes(ctx context.Context, all []kueue.Workload) ([]kueue.Workload, error) {
 	var stuck []kueue.Workload
 	for i := range all {
@@ -793,7 +847,14 @@ func (r *Reconciler) stuckHeroes(ctx context.Context, all []kueue.Workload) ([]k
 		if err != nil {
 			return nil, err
 		}
-		if ok, _ := hero.IsHero(wl, cq, r.Cfg); ok {
+		if ok, _ := hero.IsHero(wl, cq, r.Cfg); !ok {
+			continue
+		}
+		q, err := r.quotaFor(ctx, wl, cq)
+		if err != nil {
+			return nil, err
+		}
+		if !q.exceeded() {
 			stuck = append(stuck, *wl)
 		}
 	}

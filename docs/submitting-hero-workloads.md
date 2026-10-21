@@ -162,7 +162,7 @@ order:
 | No events, no drain | ClusterQueue label `hero.coreweave.com/enabled: "true"` present? |
 | No events, no drain | Workload's `spec.priorityClassRef` names `hero-critical` with kind `WorkloadPriorityClass`? (`kueue.x-k8s.io/priority-class` label on the Job, not the pod PriorityClass) |
 | No events, no drain | Every slice-pair podset's pod template tolerates the taint key? |
-| Event `HeroExceedsQuota` | Hero request exceeds the CQ's nominal quota, a customer-side commitment; shrink the job or raise quota |
+| Event `HeroExceedsQuota` | Hero request, on top of what the CQ's already-admitted heroes use, exceeds the CQ's nominal quota (a customer-side commitment); wait for those heroes to finish, shrink the job, or raise quota. When usage is the blocker the hero is re-evaluated every 30s |
 | Event `NoFeasibleDomains` | No domain can fit the hero even after eviction (capacity, priorities, or another hero occupies every candidate) |
 | Event `DrainQueued` | Another hero's drain is in flight; this one is queued |
 | Event `DrainTimedOut` | The drain didn't converge within the timeout: the hero was not fully Running by the deadline (never admitted, or admitted but its pods never all started); taints removed, the drain re-evaluates immediately. Repeated `DrainTimedOut` events on one hero mean something structural; investigate rather than wait |
