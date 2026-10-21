@@ -24,6 +24,7 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kueue "sigs.k8s.io/kueue/apis/kueue/v1beta2"
 
@@ -48,6 +49,9 @@ const (
 	PodWorkload = "hero.podWorkload"
 	// WorkloadStuck selects workloads pending on a TAS no-fit.
 	WorkloadStuck = "hero.stuck"
+	// WorkloadAdmittedClusterQueue selects the unfinished workloads
+	// holding quota in a ClusterQueue, keyed by the admitted CQ name.
+	WorkloadAdmittedClusterQueue = "hero.admittedClusterQueue"
 	// WorkloadDeactivatedFor selects the victims one drain suspended,
 	// keyed by the owning hero "<namespace>/<name>". Declared in
 	// pkg/victims beside the annotation it indexes, which pkg/victims
@@ -103,6 +107,17 @@ func Register(ctx context.Context, fi client.FieldIndexer, cfg *config.Config) e
 			return nil
 		}
 		return []string{True}
+	}); err != nil {
+		return err
+	}
+	if err := fi.IndexField(ctx, &kueue.Workload{}, WorkloadAdmittedClusterQueue, func(obj client.Object) []string {
+		wl := obj.(*kueue.Workload)
+		// A finished workload keeps its admission in status, but kueue has
+		// released its quota.
+		if wl.Status.Admission == nil || meta.IsStatusConditionTrue(wl.Status.Conditions, kueue.WorkloadFinished) {
+			return nil
+		}
+		return []string{string(wl.Status.Admission.ClusterQueue)}
 	}); err != nil {
 		return err
 	}

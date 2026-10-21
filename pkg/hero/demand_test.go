@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	kueue "sigs.k8s.io/kueue/apis/kueue/v1beta2"
 	utiltesting "sigs.k8s.io/kueue/pkg/util/testing/v1beta2"
 )
@@ -148,5 +149,51 @@ func TestPodCountAndPriority(t *testing.T) {
 	}
 	if p := Priority(utiltesting.MakeWorkload("noprio", "ns").Obj()); p != 0 {
 		t.Errorf("Priority without spec.priority = %d, want 0", p)
+	}
+}
+
+func TestAdmittedGPUUsage(t *testing.T) {
+	const podSet = "workers"
+	gpu := corev1.ResourceName("nvidia.com/gpu")
+	two := int32(2)
+	cases := []struct {
+		name string
+		psa  *kueue.PodSetAssignment // nil = not admitted
+		want int64
+	}{
+		{
+			name: "not admitted holds no quota",
+			want: 0,
+		},
+		{
+			name: "recorded resourceUsage wins",
+			psa: &kueue.PodSetAssignment{Name: podSet, Count: &two,
+				ResourceUsage: corev1.ResourceList{gpu: resource.MustParse("12")}},
+			want: 12,
+		},
+		{
+			name: "falls back to per-pod request times admitted count",
+			psa:  &kueue.PodSetAssignment{Name: podSet, Count: &two},
+			want: 16,
+		},
+		{
+			name: "falls back to spec count when the assignment has none",
+			psa:  &kueue.PodSetAssignment{Name: podSet},
+			want: 32,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wl := utiltesting.MakeWorkload("wl", "ns").PodSets(
+				*utiltesting.MakePodSet(podSet, 4).Request(gpu, "8").Obj(),
+			).Obj()
+			if tc.psa != nil {
+				wl.Status.Admission = &kueue.Admission{PodSetAssignments: []kueue.PodSetAssignment{*tc.psa}}
+			}
+			got := AdmittedGPUUsage(wl, gpu)
+			if got.Value() != tc.want {
+				t.Errorf("AdmittedGPUUsage = %s, want %d", got.String(), tc.want)
+			}
+		})
 	}
 }
