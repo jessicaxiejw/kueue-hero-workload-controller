@@ -27,6 +27,9 @@ const (
 	// inspected to tell a TAS no-fit apart from quota starvation.
 	reasonPending = "Pending"
 
+	reasonWaitingForQuota              = "WaitingForQuota"
+	reasonWaitingForPreemptedWorkloads = "WaitingForPreemptedWorkloads"
+
 	// The two fragments below identify a TAS no-fit in a kueue 0.16.x
 	// condition message. The full message reads e.g.:
 	//
@@ -61,7 +64,7 @@ func IsStuckTASNoFit(wl *kueue.Workload, mode config.DetectionMode) bool {
 	}
 
 	byReason := cond.Reason == reasonTopologyPlacementFailed
-	byMessage := cond.Reason == reasonPending && messageIsTASNoFit(cond.Message)
+	byMessage := (cond.Reason == reasonPending || cond.Reason == reasonWaitingForQuota) && messageIsTASNoFit(cond.Message)
 
 	switch mode {
 	case config.DetectionReason:
