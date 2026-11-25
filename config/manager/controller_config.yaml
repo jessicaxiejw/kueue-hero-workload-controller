@@ -13,5 +13,8 @@ runtimeHalfLife: 6h
 crossCQMultiplier: 2
 crossCohortMultiplier: 5
 stuckDetection: auto # auto | message | reason
+# How long a hero must be unadmitted before it can start a drain. Debounces the
+# QuotaReserved reason flips kueue >= 0.19 produces. 0 disables.
+stuckAfter: 2m
 dryRun: false
 nonBlockingPodLabels: {}

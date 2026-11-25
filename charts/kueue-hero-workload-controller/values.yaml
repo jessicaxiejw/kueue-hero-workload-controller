@@ -44,6 +44,9 @@ config:
   runtimeHalfLife: 6h
   crossCQMultiplier: 5
   stuckDetection: auto # auto | message | reason
+  # How long a hero must be unadmitted before it can start a drain. Debounces the
+  # QuotaReserved reason flips kueue >= 0.19 produces. 0 disables.
+  stuckAfter: 2m
   # Start with dryRun: true in a new cluster; the controller plans drains
   # and emits DrainPlannedDryRun events without tainting or evicting.
   dryRun: false

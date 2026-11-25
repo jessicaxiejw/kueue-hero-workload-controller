@@ -74,8 +74,31 @@ func TestIsStuckTASNoFit(t *testing.T) {
 			},
 		},
 		{
-			name: "0.19+ granular quota reason must NOT match",
-			wl:   heroWorkload().Condition(pendingCondition("WaitingForQuota", "waiting for quota")).Obj(),
+			// kueue >= 0.19 reports the most severe reason across flavors, so a
+			// pending hero shows WaitingForQuota / NoMatchingFlavor, not
+			// TopologyPlacementFailed. auto tolerates them; the strict reason
+			// mode still only accepts TopologyPlacementFailed.
+			name: "0.19+ WaitingForQuota is tolerated in auto",
+			wl:   heroWorkload().Condition(pendingCondition("WaitingForQuota", "Workload no longer fits after processing another workload")).Obj(),
+			want: map[config.DetectionMode]bool{
+				config.DetectionAuto:    true,
+				config.DetectionMessage: false,
+				config.DetectionReason:  false,
+			},
+		},
+		{
+			name: "0.19+ NoMatchingFlavor from a zero-quota second flavor is tolerated in auto",
+			wl:   heroWorkload().Condition(pendingCondition("NoMatchingFlavor", `couldn't assign flavors to pod set worker: Flavor "cpu-flavor" does not contain the requested level`)).Obj(),
+			want: map[config.DetectionMode]bool{
+				config.DetectionAuto:    true,
+				config.DetectionMessage: false,
+				config.DetectionReason:  false,
+			},
+		},
+		{
+			// kueue has already picked victims; starting a drain adds churn.
+			name: "0.19+ WaitingForPreemptedWorkloads must NOT start a drain",
+			wl:   heroWorkload().Condition(pendingCondition("WaitingForPreemptedWorkloads", "Pending the preemption of 3 workload(s)")).Obj(),
 			want: map[config.DetectionMode]bool{
 				config.DetectionAuto:    false,
 				config.DetectionMessage: false,

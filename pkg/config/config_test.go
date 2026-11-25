@@ -224,3 +224,21 @@ func TestLoadRejectsBadLabelValue(t *testing.T) {
 		t.Error("accepted invalid label value")
 	}
 }
+
+func TestStuckAfterValidation(t *testing.T) {
+	c := Default()
+	if c.StuckAfter.Duration != 2*time.Minute {
+		t.Fatalf("default StuckAfter = %v, want 2m", c.StuckAfter.Duration)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("default config invalid: %v", err)
+	}
+	c.StuckAfter.Duration = 0 // zero disables the debounce
+	if err := c.Validate(); err != nil {
+		t.Errorf("stuckAfter=0 rejected: %v", err)
+	}
+	c.StuckAfter.Duration = -time.Second
+	if err := c.Validate(); err == nil {
+		t.Error("negative stuckAfter accepted")
+	}
+}

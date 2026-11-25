@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -339,6 +340,40 @@ var _ = Describe("drain controller", func() {
 
 		By("keeping the taints up (untainting is the janitor's job)")
 		Consistently(taintsOwnedBy(heroKey), "2s").Should(ConsistOf(nodeB1N1, nodeB1N2))
+	})
+
+	It("keeps its drain up while kueue flips the pending reason", func() {
+		// kueue >= 0.19 reports a different QuotaReserved=False reason on
+		// nearly every scheduling cycle for the same pending hero. The drain
+		// must survive every flip, including the ones that no longer look like
+		// a TAS no-fit.
+		setupTopologyFixtures("256")
+		createVictim("small-victim", 100, nodeB1N1, nodeB1N2)
+		createVictim("big-victim", 900, "b2-n1", "b2-n2") // makes b1 the cheaper block
+		heroWL := createHero("flip-hero", 2, 1000)
+		heroKey := keyOf(heroWL)
+		Eventually(taintsOwnedBy(heroKey)).Should(ConsistOf(nodeB1N1, nodeB1N2))
+		Eventually(func() float64 { return testutil.ToFloat64(metrics.DrainsStarted) }).Should(BeNumerically(">=", 1))
+
+		startedBefore := testutil.ToFloat64(metrics.DrainsStarted)
+
+		for _, reason := range []string{
+			"NoMatchingFlavor", "WaitingForPreemptedWorkloads", "WaitingForQuota", "TopologyPlacementFailed",
+			"NoMatchingFlavor", "WaitingForPreemptedWorkloads", "TopologyPlacementFailed",
+		} {
+			cur := getWL(heroKey)()
+			patch := client.MergeFrom(cur.DeepCopy())
+			cond := meta.FindStatusCondition(cur.Status.Conditions, kueue.WorkloadQuotaReserved)
+			Expect(cond).NotTo(BeNil())
+			cond.Reason = reason
+			cond.Message = "flip to " + reason
+			Expect(k8sClient.Status().Patch(ctx, cur, patch)).To(Succeed())
+			Consistently(taintsOwnedBy(heroKey), "500ms").Should(ConsistOf(nodeB1N1, nodeB1N2))
+		}
+
+		By("never starting a second drain or aborting the first for the flips")
+		Expect(testutil.ToFloat64(metrics.DrainsStarted)).To(Equal(startedBefore))
+		Expect(eventsFor(heroWL)()).NotTo(ContainElement(EventDrainAborted))
 	})
 
 	It("nudges kueue via a drained node once the domain is empty of victims", func() {

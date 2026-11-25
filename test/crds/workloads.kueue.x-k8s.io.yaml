@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   labels:
     app.kubernetes.io/name: kueue
     control-plane: controller-manager
@@ -93,7 +93,7 @@ spec:
                   description: |-
                     podSets is a list of sets of homogeneous pods, each described by a Pod spec
                     and a count.
-                    There must be at least one element and at most 8.
+                    There must be at least one element and at most 18.
                     podSets cannot be changed.
                   items:
                     properties:
@@ -115,7 +115,7 @@ spec:
 
                           This is an alpha field and requires enabling PartialAdmission feature gate.
                         format: int32
-                        minimum: 1
+                        minimum: 0
                         type: integer
                       name:
                         default: main
@@ -1117,7 +1117,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -1372,6 +1374,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -1478,6 +1485,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -1556,6 +1568,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -1610,6 +1629,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -1762,6 +1786,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -1816,6 +1847,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -2109,7 +2145,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -2258,6 +2293,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -2312,6 +2354,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -2445,10 +2492,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -2656,7 +2713,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -2907,6 +2966,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -3013,6 +3077,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -3087,6 +3156,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -3141,6 +3217,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -3281,6 +3362,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -3335,6 +3423,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -3604,7 +3697,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -3746,6 +3838,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -3800,6 +3899,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -3942,10 +4046,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -4017,6 +4131,63 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
+                              evictionResponders:
+                                description: |-
+                                  evictionResponders reference responders that react to Evictions based on EvictionRequests.
+                                  Responders should observe and communicate through the Eviction Resource API to help with
+                                  the graceful termination of a pod. The responders are selected sequentially, according to
+                                  their specified priority.
+
+                                  Responders should periodically report on an eviction progress by updating the
+                                  .status.responders[].heartbeatTime field of the Eviction object. If this field is not updated
+                                  within the heartbeat deadline defined by the Eviction API (currently 20 minutes), the eviction
+                                  is passed over to the next responder with a lower priority. If there is no other responder,
+                                  the last default imperative-eviction.k8s.io/evictor responder with a priority of 100 will
+                                  evict the pod using the imperative Eviction API (pods/<name>/eviction subresource).
+
+                                  The maximum length of the responders list is 10.
+                                  Responders are not supported when the pod is part of a PodGroup (.spec.schedulingGroup is set).
+                                  This field can only be set on creation and is immutable afterwards.
+                                items:
+                                  description: |-
+                                    EvictionResponder allows you to specify the responder reacting to an Eviction.
+                                    Responders should observe and communicate through the Eviction Resource API to help with
+                                    the graceful eviction of a target (e.g. termination of a pod).
+                                  properties:
+                                    name:
+                                      description: |-
+                                        name allows you to identify the responder responding to the Eviction.
+
+                                        It must be a valid domain-prefixed key (such as "acme.io/foo").
+                                        Domain names *.k8s.io and *.kubernetes.io are reserved.
+                                        This field must be unique for each responder.
+                                        This field is required.
+                                      type: string
+                                    priority:
+                                      description: |-
+                                        priority for this responder. Higher priorities are selected first by the evictionrequest-controller.
+                                        If there are responders with the same priority, the responder whose domain name comes first in the
+                                        alphabetical higher domain order, will be picked. This means that the top domain labels are compared
+                                        alphabetically first, followed by the lower domain labels. The key is compared last.
+
+                                        The responder that is the managing controller of the pod should set the value of
+                                        this field to 10000 to allow both for preemption or fallback registration by other
+                                        responders.
+
+                                        The minimum value is 0 and the maximum value is 100000.
+                                        The interval 0-999 is reserved for responders with *.k8s.io suffix.
+                                        This field is required.
+                                      format: int32
+                                      type: integer
+                                  required:
+                                    - name
+                                    - priority
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                  - name
+                                x-kubernetes-list-type: map
                               hostAliases:
                                 description: |-
                                   HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
@@ -4070,7 +4241,6 @@ spec:
                                   When set to false, a new userns is created for the pod. Setting false is useful for
                                   mitigating container breakout vulnerabilities even allowing users to run their
                                   containers as root without actually having root privileges on the host.
-                                  This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature.
                                 type: boolean
                               hostname:
                                 description: |-
@@ -4088,7 +4258,6 @@ spec:
                                   - `hostNetwork` must be set to false.
 
                                   This field must be a valid DNS subdomain as defined in RFC 1123 and contain at most 64 characters.
-                                  Requires the HostnameOverride feature gate to be enabled.
                                 type: string
                               imagePullSecrets:
                                 description: |-
@@ -4192,7 +4361,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -4447,6 +4618,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -4553,6 +4729,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -4631,6 +4812,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -4685,6 +4873,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -4837,6 +5030,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -4891,6 +5091,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -5184,7 +5389,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -5333,6 +5537,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -5387,6 +5598,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -5520,10 +5736,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -5677,6 +5903,8 @@ spec:
                                 description: |-
                                   PreemptionPolicy is the Policy for preempting pods with lower priority.
                                   One of Never, PreemptLowerPriority.
+                                  When Priority Admission Controller is enabled, it prevents users from setting
+                                  this field. The admission controller populates this field from PriorityClassName.
                                   Defaults to PreemptLowerPriority if unset.
                                 type: string
                               priority:
@@ -5733,6 +5961,14 @@ spec:
 
                                     It adds a name to it that uniquely identifies the ResourceClaim inside the Pod.
                                     Containers that need access to the ResourceClaim reference it with this name.
+
+                                    When the DRAWorkloadResourceClaims feature gate is enabled and this Pod
+                                    belongs to a PodGroup, a PodResourceClaim is matched to a
+                                    PodGroupResourceClaim if all of their fields are equal (Name,
+                                    ResourceClaimName, and ResourceClaimTemplateName). A matched claim references
+                                    a single ResourceClaim shared across all Pods in the PodGroup, reserved for
+                                    the PodGroup in ResourceClaimStatus.ReservedFor rather than for individual
+                                    Pods.
                                   properties:
                                     name:
                                       description: |-
@@ -5757,6 +5993,16 @@ spec:
                                         will also be deleted. The pod name and resource name, along with a
                                         generated component, will be used to form a unique name for the
                                         ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.
+
+                                        When the DRAWorkloadResourceClaims feature gate is enabled and the pod
+                                        belongs to a PodGroup that defines a PodGroupResourceClaim with the same
+                                        Name and ResourceClaimTemplateName, this PodResourceClaim resolves to the
+                                        ResourceClaim generated for the PodGroup. All pods in the group that
+                                        define an equivalent PodResourceClaim matching the
+                                        PodGroupResourceClaim's Name and ResourceClaimTemplateName share the same
+                                        generated ResourceClaim. ResourceClaims generated for a PodGroup are
+                                        owned by the PodGroup and their lifecycles are tied to the PodGroup
+                                        instead of any individual pod.
 
                                         This field is immutable and no changes will be made to the
                                         corresponding ResourceClaim by the control plane after creating the
@@ -5882,6 +6128,28 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
+                              schedulingGroup:
+                                description: |-
+                                  SchedulingGroup provides a reference to the immediate scheduling runtime
+                                  grouping object that this Pod belongs to.
+                                  This field is used by the scheduler to identify the group and apply the
+                                  correct group scheduling policies. The association with a group also
+                                  impacts other lifecycle aspects of a Pod that are relevant in a wider context
+                                  of scheduling like preemption, resource attachment, etc. If not specified,
+                                  the Pod is treated as a single unit in all of these aspects.
+                                  The group object referenced by this field may not exist at the time the
+                                  Pod is created.
+                                  This field is immutable, but a group object with the same name may be
+                                  recreated with different policies. Doing this during pod scheduling
+                                  may result in the placement not conforming to the expected policies.
+                                properties:
+                                  podGroupName:
+                                    description: |-
+                                      PodGroupName specifies the name of the standalone PodGroup object
+                                      that represents the runtime instance of this group.
+                                      Must be a DNS subdomain.
+                                    type: string
+                                type: object
                               securityContext:
                                 description: |-
                                   SecurityContext holds pod-level security attributes and common container settings.
@@ -5978,11 +6246,8 @@ spec:
                                       Eligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes
                                       whose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their
                                       CSIDriver instance. Other volumes are always re-labelled recursively.
-                                      "MountOption" value is allowed only when SELinuxMount feature gate is enabled.
 
-                                      If not specified and SELinuxMount feature gate is enabled, "MountOption" is used.
-                                      If not specified and SELinuxMount feature gate is disabled, "MountOption" is used for ReadWriteOncePod volumes
-                                      and "Recursive" for all other volumes.
+                                      If not specified, "MountOption" is used.
 
                                       This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
 
@@ -6581,6 +6846,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: |-
                                             items if unspecified, each key-value pair in the Data field of the referenced
@@ -6613,6 +6885,13 @@ spec:
                                                   May not contain the path element '..'.
                                                   May not start with the string '..'.
                                                 type: string
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - key
                                               - path
@@ -6696,6 +6975,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: Items is a list of downward API volume file
                                           items:
@@ -6749,6 +7035,13 @@ spec:
                                                   - resource
                                                 type: object
                                                 x-kubernetes-map-type: atomic
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - path
                                             type: object
@@ -6767,6 +7060,18 @@ spec:
                                             Must be an empty string (default) or Memory.
                                             More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
                                           type: string
+                                        mode:
+                                          description: |-
+                                            mode specifies the permission bits for the emptyDir directory, in numeric
+                                            notation (e.g., 0755, 01777). Must be a value between 0000 and 01777.
+                                            If not specified, defaults to 0777.
+                                            This might be in conflict with other options that affect the file
+                                            mode, like fsGroup. If fsGroup is specified, the fsGroup permissions
+                                            will override the mode specified here.
+                                            This field has no effect on Windows.
+                                            This field is alpha and requires EmptyDirVolumeMode featuregate to be enabled.
+                                          format: int32
+                                          type: integer
                                         sizeLimit:
                                           anyOf:
                                             - type: integer
@@ -6877,8 +7182,8 @@ spec:
                                                     * An existing PVC (PersistentVolumeClaim)
                                                     If the provisioner or an external controller can support the specified data source,
                                                     it will create a new volume based on the contents of the specified data source.
-                                                    When the AnyVolumeDataSource feature gate is enabled, dataSource contents will be copied to dataSourceRef,
-                                                    and dataSourceRef contents will be copied to dataSource when dataSourceRef.namespace is not specified.
+                                                    dataSource contents will be copied to dataSourceRef, and dataSourceRef contents will be
+                                                    copied to dataSource when dataSourceRef.namespace is not specified.
                                                     If the namespace is specified, then dataSourceRef will not be copied to dataSource.
                                                   properties:
                                                     apiGroup:
@@ -6921,7 +7226,6 @@ spec:
                                                       specified.
                                                     * While dataSource only allows local objects, dataSourceRef allows objects
                                                       in any namespaces.
-                                                    (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
                                                     (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
                                                   properties:
                                                     apiGroup:
@@ -7268,7 +7572,7 @@ spec:
                                         A failure to resolve or pull the image during pod startup will block containers from starting and may add significant latency. Failures will be retried using normal volume backoff and will be reported on the pod reason and message.
                                         The types of objects that may be mounted by this volume are defined by the container runtime implementation on a host machine and at minimum must include all valid types supported by the container image field.
                                         The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images.
-                                        The volume will be mounted read-only (ro) and non-executable files (noexec).
+                                        The volume will be mounted read-only (ro).
                                         Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33.
                                         The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type.
                                       properties:
@@ -7436,8 +7740,7 @@ spec:
                                       description: |-
                                         portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
                                         Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type
-                                        are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate
-                                        is on.
+                                        are redirected to the pxd.portworx.com CSI driver.
                                       properties:
                                         fsType:
                                           description: |-
@@ -7468,6 +7771,13 @@ spec:
                                             This might be in conflict with other options that affect the file
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
+                                          type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
                                           type: integer
                                         sources:
                                           description: |-
@@ -7564,6 +7874,13 @@ spec:
                                                       Mutually-exclusive with name.  The contents of all selected
                                                       ClusterTrustBundles will be unified and deduplicated.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                 required:
                                                   - path
                                                 type: object
@@ -7602,6 +7919,13 @@ spec:
                                                             May not contain the path element '..'.
                                                             May not start with the string '..'.
                                                           type: string
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - key
                                                         - path
@@ -7678,6 +8002,13 @@ spec:
                                                             - resource
                                                           type: object
                                                           x-kubernetes-map-type: atomic
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - path
                                                       type: object
@@ -7784,6 +8115,13 @@ spec:
                                                   signerName:
                                                     description: Kubelet's generated CSRs will be addressed to this signer.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                   userAnnotations:
                                                     additionalProperties:
                                                       type: string
@@ -7841,6 +8179,13 @@ spec:
                                                             May not contain the path element '..'.
                                                             May not start with the string '..'.
                                                           type: string
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - key
                                                         - path
@@ -7886,6 +8231,13 @@ spec:
                                                       path is the path relative to the mount point of the file to project the
                                                       token into.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                 required:
                                                   - path
                                                 type: object
@@ -8086,6 +8438,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: |-
                                             items If unspecified, each key-value pair in the Data field of the referenced
@@ -8118,6 +8477,13 @@ spec:
                                                   May not contain the path element '..'.
                                                   May not start with the string '..'.
                                                 type: string
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - key
                                               - path
@@ -8211,42 +8577,6 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
-                              workloadRef:
-                                description: |-
-                                  WorkloadRef provides a reference to the Workload object that this Pod belongs to.
-                                  This field is used by the scheduler to identify the PodGroup and apply the
-                                  correct group scheduling policies. The Workload object referenced
-                                  by this field may not exist at the time the Pod is created.
-                                  This field is immutable, but a Workload object with the same name
-                                  may be recreated with different policies. Doing this during pod scheduling
-                                  may result in the placement not conforming to the expected policies.
-                                properties:
-                                  name:
-                                    description: |-
-                                      Name defines the name of the Workload object this Pod belongs to.
-                                      Workload must be in the same namespace as the Pod.
-                                      If it doesn't match any existing Workload, the Pod will remain unschedulable
-                                      until a Workload object is created and observed by the kube-scheduler.
-                                      It must be a DNS subdomain.
-                                    type: string
-                                  podGroup:
-                                    description: |-
-                                      PodGroup is the name of the PodGroup within the Workload that this Pod
-                                      belongs to. If it doesn't match any existing PodGroup within the Workload,
-                                      the Pod will remain unschedulable until the Workload object is recreated
-                                      and observed by the kube-scheduler. It must be a DNS label.
-                                    type: string
-                                  podGroupReplicaKey:
-                                    description: |-
-                                      PodGroupReplicaKey specifies the replica key of the PodGroup to which this
-                                      Pod belongs. It is used to distinguish pods belonging to different replicas
-                                      of the same pod group. The pod group policy is applied separately to each replica.
-                                      When set, it must be a DNS label.
-                                    type: string
-                                required:
-                                  - name
-                                  - podGroup
-                                type: object
                             required:
                               - containers
                             type: object
@@ -8278,6 +8608,7 @@ spec:
                               Kueue finds a requested topology domain on a level defined
                               in `kueue.x-k8s.io/podset-slice-required-topology` annotation.
                             format: int32
+                            minimum: 1
                             type: integer
                           preferred:
                             description: |-
@@ -8314,9 +8645,9 @@ spec:
                       - template
                     type: object
                     x-kubernetes-validations:
-                      - message: minCount should be positive and less or equal to count
+                      - message: minCount should be less or equal to count
                         rule: 'has(self.minCount) ? self.minCount <= self.count : true'
-                  maxItems: 8
+                  maxItems: 18
                   minItems: 1
                   type: array
                   x-kubernetes-list-map-keys:
@@ -8531,7 +8862,7 @@ spec:
                         required:
                           - name
                         type: object
-                      maxItems: 8
+                      maxItems: 18
                       type: array
                       x-kubernetes-list-map-keys:
                         - name
@@ -8644,7 +8975,7 @@ spec:
                           required:
                             - name
                           type: object
-                        maxItems: 8
+                        maxItems: 18
                         type: array
                         x-kubernetes-list-type: atomic
                       requeueAfterSeconds:
@@ -8796,7 +9127,7 @@ spec:
                       - count
                       - name
                     type: object
-                  maxItems: 8
+                  maxItems: 18
                   type: array
                   x-kubernetes-list-map-keys:
                     - name
@@ -8852,7 +9183,7 @@ spec:
                     required:
                       - name
                     type: object
-                  maxItems: 8
+                  maxItems: 18
                   type: array
                   x-kubernetes-list-map-keys:
                     - name
@@ -8920,10 +9251,10 @@ spec:
             - message: priorityClassName is immutable while workload quota reserved and priorityClassSource is not equal to kueue.x-k8s.io/workloadpriorityclass
               rule: '(has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'') && has(oldSelf.spec.priorityClassSource) && has(self.spec.priorityClassSource) && (self.spec.priorityClassSource != ''kueue.x-k8s.io/workloadpriorityclass'') && has(oldSelf.spec.priorityClassName) && has(self.spec.priorityClassName)) ? (oldSelf.spec.priorityClassName == self.spec.priorityClassName) : true'
             - message: queueName is immutable while workload quota reserved
-              rule: '(has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && has(oldSelf.spec.queueName) && has(self.spec.queueName) ? oldSelf.spec.queueName == self.spec.queueName : true'
-            - message: maximumExecutionTimeSeconds is immutable while workload quota reserved
+              rule: '((has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True''))) ? ((has(oldSelf.spec.queueName) == has(self.spec.queueName)) && (!has(oldSelf.spec.queueName) || oldSelf.spec.queueName == self.spec.queueName)) : true'
+            - message: maximumExecutionTimeSeconds is immutable while the workload is admitted
               rule: ((has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == 'Admitted' && c.status == 'True')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == 'Admitted' && c.status == 'True')))?((has(oldSelf.spec.maximumExecutionTimeSeconds)?oldSelf.spec.maximumExecutionTimeSeconds:0) ==  (has(self.spec.maximumExecutionTimeSeconds)?self.spec.maximumExecutionTimeSeconds:0)):true
-      served: true
+      served: false
       storage: false
       subresources:
         status: {}
@@ -8998,7 +9329,7 @@ spec:
                   description: |-
                     podSets is a list of sets of homogeneous pods, each described by a Pod spec
                     and a count.
-                    There must be at least one element and at most 8.
+                    There must be at least one element and at most 18.
                     podSets cannot be changed.
                   items:
                     properties:
@@ -9020,7 +9351,7 @@ spec:
 
                           This is an alpha field and requires enabling PartialAdmission feature gate.
                         format: int32
-                        minimum: 1
+                        minimum: 0
                         type: integer
                       name:
                         default: main
@@ -10022,7 +10353,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -10277,6 +10610,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -10383,6 +10721,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -10461,6 +10804,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -10515,6 +10865,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -10667,6 +11022,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -10721,6 +11083,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -11014,7 +11381,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -11163,6 +11529,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -11217,6 +11590,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -11350,10 +11728,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -11561,7 +11949,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -11812,6 +12202,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -11918,6 +12313,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -11992,6 +12392,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -12046,6 +12453,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -12186,6 +12598,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -12240,6 +12659,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -12509,7 +12933,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -12651,6 +13074,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -12705,6 +13135,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -12847,10 +13282,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -12922,6 +13367,63 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
+                              evictionResponders:
+                                description: |-
+                                  evictionResponders reference responders that react to Evictions based on EvictionRequests.
+                                  Responders should observe and communicate through the Eviction Resource API to help with
+                                  the graceful termination of a pod. The responders are selected sequentially, according to
+                                  their specified priority.
+
+                                  Responders should periodically report on an eviction progress by updating the
+                                  .status.responders[].heartbeatTime field of the Eviction object. If this field is not updated
+                                  within the heartbeat deadline defined by the Eviction API (currently 20 minutes), the eviction
+                                  is passed over to the next responder with a lower priority. If there is no other responder,
+                                  the last default imperative-eviction.k8s.io/evictor responder with a priority of 100 will
+                                  evict the pod using the imperative Eviction API (pods/<name>/eviction subresource).
+
+                                  The maximum length of the responders list is 10.
+                                  Responders are not supported when the pod is part of a PodGroup (.spec.schedulingGroup is set).
+                                  This field can only be set on creation and is immutable afterwards.
+                                items:
+                                  description: |-
+                                    EvictionResponder allows you to specify the responder reacting to an Eviction.
+                                    Responders should observe and communicate through the Eviction Resource API to help with
+                                    the graceful eviction of a target (e.g. termination of a pod).
+                                  properties:
+                                    name:
+                                      description: |-
+                                        name allows you to identify the responder responding to the Eviction.
+
+                                        It must be a valid domain-prefixed key (such as "acme.io/foo").
+                                        Domain names *.k8s.io and *.kubernetes.io are reserved.
+                                        This field must be unique for each responder.
+                                        This field is required.
+                                      type: string
+                                    priority:
+                                      description: |-
+                                        priority for this responder. Higher priorities are selected first by the evictionrequest-controller.
+                                        If there are responders with the same priority, the responder whose domain name comes first in the
+                                        alphabetical higher domain order, will be picked. This means that the top domain labels are compared
+                                        alphabetically first, followed by the lower domain labels. The key is compared last.
+
+                                        The responder that is the managing controller of the pod should set the value of
+                                        this field to 10000 to allow both for preemption or fallback registration by other
+                                        responders.
+
+                                        The minimum value is 0 and the maximum value is 100000.
+                                        The interval 0-999 is reserved for responders with *.k8s.io suffix.
+                                        This field is required.
+                                      format: int32
+                                      type: integer
+                                  required:
+                                    - name
+                                    - priority
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                  - name
+                                x-kubernetes-list-type: map
                               hostAliases:
                                 description: |-
                                   HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
@@ -12975,7 +13477,6 @@ spec:
                                   When set to false, a new userns is created for the pod. Setting false is useful for
                                   mitigating container breakout vulnerabilities even allowing users to run their
                                   containers as root without actually having root privileges on the host.
-                                  This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature.
                                 type: boolean
                               hostname:
                                 description: |-
@@ -12993,7 +13494,6 @@ spec:
                                   - `hostNetwork` must be set to false.
 
                                   This field must be a valid DNS subdomain as defined in RFC 1123 and contain at most 64 characters.
-                                  Requires the HostnameOverride feature gate to be enabled.
                                 type: string
                               imagePullSecrets:
                                 description: |-
@@ -13097,7 +13597,9 @@ spec:
                                                 description: Selects a key of a ConfigMap.
                                                 properties:
                                                   key:
-                                                    description: The key to select.
+                                                    description: |-
+                                                      The key to select from the ConfigMap's Data field.
+                                                      Keys in the BinaryData field are not currently propagated to container env vars.
                                                     type: string
                                                   name:
                                                     default: ""
@@ -13352,6 +13854,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -13458,6 +13965,11 @@ spec:
                                                     Number must be in the range 1 to 65535.
                                                     Name must be an IANA_SVC_NAME.
                                                   x-kubernetes-int-or-string: true
+                                                protocol:
+                                                  description: |-
+                                                    Protocol selects the wire protocol for the probe connection.
+                                                    Nil defaults to HTTP/1.1.
+                                                  type: string
                                                 scheme:
                                                   description: |-
                                                     Scheme to use for connecting to the host.
@@ -13536,6 +14048,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -13590,6 +14109,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -13742,6 +14266,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -13796,6 +14327,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -14089,7 +14625,6 @@ spec:
                                             procMount denotes the type of proc mount to use for the containers.
                                             The default value is Default which uses the container runtime defaults for
                                             readonly paths and masked paths.
-                                            This requires the ProcMountType feature flag to be enabled.
                                             Note that this field cannot be set when spec.os.name is windows.
                                           type: string
                                         readOnlyRootFilesystem:
@@ -14238,6 +14773,13 @@ spec:
                                         grpc:
                                           description: GRPC specifies a GRPC HealthCheckRequest.
                                           properties:
+                                            mode:
+                                              description: |-
+                                                mode specifies the connection mode for the gRPC health probe.
+                                                Set to "TLS" to use TLS without certificate verification.
+                                                Set to "Plaintext" to use a plaintext (insecure) connection explicitly.
+                                                If not specified, the probe uses a plaintext (insecure) connection.
+                                              type: string
                                             port:
                                               description: Port number of the gRPC service. Number must be in the range 1 to 65535.
                                               format: int32
@@ -14292,6 +14834,11 @@ spec:
                                                 Number must be in the range 1 to 65535.
                                                 Name must be an IANA_SVC_NAME.
                                               x-kubernetes-int-or-string: true
+                                            protocol:
+                                              description: |-
+                                                Protocol selects the wire protocol for the probe connection.
+                                                Nil defaults to HTTP/1.1.
+                                              type: string
                                             scheme:
                                               description: |-
                                                 Scheme to use for connecting to the host.
@@ -14425,10 +14972,20 @@ spec:
                                       items:
                                         description: VolumeMount describes a mounting of a Volume within a container.
                                         properties:
-                                          mountPath:
+                                          bindMountOptions:
                                             description: |-
-                                              Path within the container at which the volume should be mounted.  Must
-                                              not contain ':'.
+                                              bindMountOptions is the list of additional bind mount options to apply when
+                                              mounting this volume into the container. Allowed values are noexec,
+                                              nodev, and nosuid. These are Linux mount options and have no effect on
+                                              Windows nodes.
+                                              This field is not supported with image volumes.
+                                              This is an alpha field and requires enabling the VolumeBindMountOptions feature gate.
+                                            items:
+                                              type: string
+                                            type: array
+                                            x-kubernetes-list-type: set
+                                          mountPath:
+                                            description: Path within the container at which the volume should be mounted.
                                             type: string
                                           mountPropagation:
                                             description: |-
@@ -14582,6 +15139,8 @@ spec:
                                 description: |-
                                   PreemptionPolicy is the Policy for preempting pods with lower priority.
                                   One of Never, PreemptLowerPriority.
+                                  When Priority Admission Controller is enabled, it prevents users from setting
+                                  this field. The admission controller populates this field from PriorityClassName.
                                   Defaults to PreemptLowerPriority if unset.
                                 type: string
                               priority:
@@ -14638,6 +15197,14 @@ spec:
 
                                     It adds a name to it that uniquely identifies the ResourceClaim inside the Pod.
                                     Containers that need access to the ResourceClaim reference it with this name.
+
+                                    When the DRAWorkloadResourceClaims feature gate is enabled and this Pod
+                                    belongs to a PodGroup, a PodResourceClaim is matched to a
+                                    PodGroupResourceClaim if all of their fields are equal (Name,
+                                    ResourceClaimName, and ResourceClaimTemplateName). A matched claim references
+                                    a single ResourceClaim shared across all Pods in the PodGroup, reserved for
+                                    the PodGroup in ResourceClaimStatus.ReservedFor rather than for individual
+                                    Pods.
                                   properties:
                                     name:
                                       description: |-
@@ -14662,6 +15229,16 @@ spec:
                                         will also be deleted. The pod name and resource name, along with a
                                         generated component, will be used to form a unique name for the
                                         ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.
+
+                                        When the DRAWorkloadResourceClaims feature gate is enabled and the pod
+                                        belongs to a PodGroup that defines a PodGroupResourceClaim with the same
+                                        Name and ResourceClaimTemplateName, this PodResourceClaim resolves to the
+                                        ResourceClaim generated for the PodGroup. All pods in the group that
+                                        define an equivalent PodResourceClaim matching the
+                                        PodGroupResourceClaim's Name and ResourceClaimTemplateName share the same
+                                        generated ResourceClaim. ResourceClaims generated for a PodGroup are
+                                        owned by the PodGroup and their lifecycles are tied to the PodGroup
+                                        instead of any individual pod.
 
                                         This field is immutable and no changes will be made to the
                                         corresponding ResourceClaim by the control plane after creating the
@@ -14787,6 +15364,28 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
+                              schedulingGroup:
+                                description: |-
+                                  SchedulingGroup provides a reference to the immediate scheduling runtime
+                                  grouping object that this Pod belongs to.
+                                  This field is used by the scheduler to identify the group and apply the
+                                  correct group scheduling policies. The association with a group also
+                                  impacts other lifecycle aspects of a Pod that are relevant in a wider context
+                                  of scheduling like preemption, resource attachment, etc. If not specified,
+                                  the Pod is treated as a single unit in all of these aspects.
+                                  The group object referenced by this field may not exist at the time the
+                                  Pod is created.
+                                  This field is immutable, but a group object with the same name may be
+                                  recreated with different policies. Doing this during pod scheduling
+                                  may result in the placement not conforming to the expected policies.
+                                properties:
+                                  podGroupName:
+                                    description: |-
+                                      PodGroupName specifies the name of the standalone PodGroup object
+                                      that represents the runtime instance of this group.
+                                      Must be a DNS subdomain.
+                                    type: string
+                                type: object
                               securityContext:
                                 description: |-
                                   SecurityContext holds pod-level security attributes and common container settings.
@@ -14883,11 +15482,8 @@ spec:
                                       Eligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes
                                       whose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their
                                       CSIDriver instance. Other volumes are always re-labelled recursively.
-                                      "MountOption" value is allowed only when SELinuxMount feature gate is enabled.
 
-                                      If not specified and SELinuxMount feature gate is enabled, "MountOption" is used.
-                                      If not specified and SELinuxMount feature gate is disabled, "MountOption" is used for ReadWriteOncePod volumes
-                                      and "Recursive" for all other volumes.
+                                      If not specified, "MountOption" is used.
 
                                       This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
 
@@ -15486,6 +16082,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: |-
                                             items if unspecified, each key-value pair in the Data field of the referenced
@@ -15518,6 +16121,13 @@ spec:
                                                   May not contain the path element '..'.
                                                   May not start with the string '..'.
                                                 type: string
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - key
                                               - path
@@ -15601,6 +16211,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: Items is a list of downward API volume file
                                           items:
@@ -15654,6 +16271,13 @@ spec:
                                                   - resource
                                                 type: object
                                                 x-kubernetes-map-type: atomic
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - path
                                             type: object
@@ -15672,6 +16296,18 @@ spec:
                                             Must be an empty string (default) or Memory.
                                             More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
                                           type: string
+                                        mode:
+                                          description: |-
+                                            mode specifies the permission bits for the emptyDir directory, in numeric
+                                            notation (e.g., 0755, 01777). Must be a value between 0000 and 01777.
+                                            If not specified, defaults to 0777.
+                                            This might be in conflict with other options that affect the file
+                                            mode, like fsGroup. If fsGroup is specified, the fsGroup permissions
+                                            will override the mode specified here.
+                                            This field has no effect on Windows.
+                                            This field is alpha and requires EmptyDirVolumeMode featuregate to be enabled.
+                                          format: int32
+                                          type: integer
                                         sizeLimit:
                                           anyOf:
                                             - type: integer
@@ -15782,8 +16418,8 @@ spec:
                                                     * An existing PVC (PersistentVolumeClaim)
                                                     If the provisioner or an external controller can support the specified data source,
                                                     it will create a new volume based on the contents of the specified data source.
-                                                    When the AnyVolumeDataSource feature gate is enabled, dataSource contents will be copied to dataSourceRef,
-                                                    and dataSourceRef contents will be copied to dataSource when dataSourceRef.namespace is not specified.
+                                                    dataSource contents will be copied to dataSourceRef, and dataSourceRef contents will be
+                                                    copied to dataSource when dataSourceRef.namespace is not specified.
                                                     If the namespace is specified, then dataSourceRef will not be copied to dataSource.
                                                   properties:
                                                     apiGroup:
@@ -15826,7 +16462,6 @@ spec:
                                                       specified.
                                                     * While dataSource only allows local objects, dataSourceRef allows objects
                                                       in any namespaces.
-                                                    (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
                                                     (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
                                                   properties:
                                                     apiGroup:
@@ -16173,7 +16808,7 @@ spec:
                                         A failure to resolve or pull the image during pod startup will block containers from starting and may add significant latency. Failures will be retried using normal volume backoff and will be reported on the pod reason and message.
                                         The types of objects that may be mounted by this volume are defined by the container runtime implementation on a host machine and at minimum must include all valid types supported by the container image field.
                                         The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images.
-                                        The volume will be mounted read-only (ro) and non-executable files (noexec).
+                                        The volume will be mounted read-only (ro).
                                         Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33.
                                         The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type.
                                       properties:
@@ -16341,8 +16976,7 @@ spec:
                                       description: |-
                                         portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
                                         Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type
-                                        are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate
-                                        is on.
+                                        are redirected to the pxd.portworx.com CSI driver.
                                       properties:
                                         fsType:
                                           description: |-
@@ -16373,6 +17007,13 @@ spec:
                                             This might be in conflict with other options that affect the file
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
+                                          type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
                                           type: integer
                                         sources:
                                           description: |-
@@ -16469,6 +17110,13 @@ spec:
                                                       Mutually-exclusive with name.  The contents of all selected
                                                       ClusterTrustBundles will be unified and deduplicated.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                 required:
                                                   - path
                                                 type: object
@@ -16507,6 +17155,13 @@ spec:
                                                             May not contain the path element '..'.
                                                             May not start with the string '..'.
                                                           type: string
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - key
                                                         - path
@@ -16583,6 +17238,13 @@ spec:
                                                             - resource
                                                           type: object
                                                           x-kubernetes-map-type: atomic
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - path
                                                       type: object
@@ -16689,6 +17351,13 @@ spec:
                                                   signerName:
                                                     description: Kubelet's generated CSRs will be addressed to this signer.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                   userAnnotations:
                                                     additionalProperties:
                                                       type: string
@@ -16746,6 +17415,13 @@ spec:
                                                             May not contain the path element '..'.
                                                             May not start with the string '..'.
                                                           type: string
+                                                        user:
+                                                          description: |-
+                                                            user is Optional: The owner UID of the created file.
+                                                            If specified, the item-level user field takes precedence over defaultUser.
+                                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                          format: int64
+                                                          type: integer
                                                       required:
                                                         - key
                                                         - path
@@ -16791,6 +17467,13 @@ spec:
                                                       path is the path relative to the mount point of the file to project the
                                                       token into.
                                                     type: string
+                                                  user:
+                                                    description: |-
+                                                      user is Optional: The owner UID of the created file.
+                                                      If specified, the item-level user field takes precedence over defaultUser.
+                                                      (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                    format: int64
+                                                    type: integer
                                                 required:
                                                   - path
                                                 type: object
@@ -16991,6 +17674,13 @@ spec:
                                             mode, like fsGroup, and the result can be other mode bits set.
                                           format: int32
                                           type: integer
+                                        defaultUser:
+                                          description: |-
+                                            defaultUser is Optional: The owner UID of the created files by default.
+                                            The defaultUser field is only used as a fallback when the item-level user field is unset.
+                                            (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                          format: int64
+                                          type: integer
                                         items:
                                           description: |-
                                             items If unspecified, each key-value pair in the Data field of the referenced
@@ -17023,6 +17713,13 @@ spec:
                                                   May not contain the path element '..'.
                                                   May not start with the string '..'.
                                                 type: string
+                                              user:
+                                                description: |-
+                                                  user is Optional: The owner UID of the created file.
+                                                  If specified, the item-level user field takes precedence over defaultUser.
+                                                  (Alpha) This field requires the AtomicWriteVolumeUserFields feature gate to be enabled.
+                                                format: int64
+                                                type: integer
                                             required:
                                               - key
                                               - path
@@ -17116,42 +17813,6 @@ spec:
                                 x-kubernetes-list-map-keys:
                                   - name
                                 x-kubernetes-list-type: map
-                              workloadRef:
-                                description: |-
-                                  WorkloadRef provides a reference to the Workload object that this Pod belongs to.
-                                  This field is used by the scheduler to identify the PodGroup and apply the
-                                  correct group scheduling policies. The Workload object referenced
-                                  by this field may not exist at the time the Pod is created.
-                                  This field is immutable, but a Workload object with the same name
-                                  may be recreated with different policies. Doing this during pod scheduling
-                                  may result in the placement not conforming to the expected policies.
-                                properties:
-                                  name:
-                                    description: |-
-                                      Name defines the name of the Workload object this Pod belongs to.
-                                      Workload must be in the same namespace as the Pod.
-                                      If it doesn't match any existing Workload, the Pod will remain unschedulable
-                                      until a Workload object is created and observed by the kube-scheduler.
-                                      It must be a DNS subdomain.
-                                    type: string
-                                  podGroup:
-                                    description: |-
-                                      PodGroup is the name of the PodGroup within the Workload that this Pod
-                                      belongs to. If it doesn't match any existing PodGroup within the Workload,
-                                      the Pod will remain unschedulable until the Workload object is recreated
-                                      and observed by the kube-scheduler. It must be a DNS label.
-                                    type: string
-                                  podGroupReplicaKey:
-                                    description: |-
-                                      PodGroupReplicaKey specifies the replica key of the PodGroup to which this
-                                      Pod belongs. It is used to distinguish pods belonging to different replicas
-                                      of the same pod group. The pod group policy is applied separately to each replica.
-                                      When set, it must be a DNS label.
-                                    type: string
-                                required:
-                                  - name
-                                  - podGroup
-                                type: object
                             required:
                               - containers
                             type: object
@@ -17183,7 +17844,38 @@ spec:
                               Kueue finds a requested topology domain on a level defined
                               in `kueue.x-k8s.io/podset-slice-required-topology` annotation.
                             format: int32
+                            minimum: 1
                             type: integer
+                          podsetSliceRequiredTopologyConstraints:
+                            description: |-
+                              podsetSliceRequiredTopologyConstraints defines all layers of slice
+                              topology constraints. Each entry specifies a topology level and slice
+                              size, from the outermost (coarsest) to the innermost (finest) layer.
+                              At most 3 layers are supported.
+                              This field is mutually exclusive with podSetSliceRequiredTopology and
+                              podSetSliceSize.
+
+                              This annotation is alpha-level for the TASMultiLayerTopology feature gate.
+                            items:
+                              description: PodsetSliceRequiredTopologyConstraint defines a single slice topology constraint layer.
+                              properties:
+                                size:
+                                  description: size indicates the number of pods in each group at this slice layer.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                topology:
+                                  description: topology indicates the topology level required for this slice layer.
+                                  maxLength: 63
+                                  minLength: 1
+                                  type: string
+                              required:
+                                - size
+                                - topology
+                              type: object
+                            maxItems: 3
+                            type: array
+                            x-kubernetes-list-type: atomic
                           preferred:
                             description: |-
                               preferred indicates the topology level preferred by the PodSet, as
@@ -17205,6 +17897,7 @@ spec:
                               subGroupCount indicates the count of replicated Jobs (groups) within a PodSet.
                               For example, in the context of JobSet this value is read from jobset.sigs.k8s.io/replicatedjob-replicas.
                             format: int32
+                            minimum: 0
                             type: integer
                           subGroupIndexLabel:
                             description: "subGroupIndexLabel indicates the name of the label indexing the instances of replicated Jobs (groups)\nwithin a PodSet. For example, in the context of JobSet this is jobset.sigs.k8s.io/job-index.\n\tThis is limited to 317 characters."
@@ -17221,10 +17914,30 @@ spec:
                       - template
                     type: object
                     x-kubernetes-validations:
-                      - message: minCount should be positive and less or equal to count
+                      - message: minCount should be less or equal to count
                         rule: 'has(self.minCount) ? self.minCount <= self.count : true'
-                  maxItems: 8
+                  maxItems: 18
                   minItems: 1
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - name
+                  x-kubernetes-list-type: map
+                preemptionGates:
+                  description: |-
+                    preemptionGates is a list of gates governing whether the workload
+                    can trigger preemptions.
+                    The gates are closed by default.
+                  items:
+                    properties:
+                      name:
+                        description: name identifies the preemption gate.
+                        maxLength: 63
+                        minLength: 1
+                        type: string
+                    required:
+                      - name
+                    type: object
+                  maxItems: 8
                   type: array
                   x-kubernetes-list-map-keys:
                     - name
@@ -17465,7 +18178,7 @@ spec:
                                         type: object
                                         x-kubernetes-validations:
                                           - message: exactly one of the fields in [universal individual] must be set
-                                            rule: '[has(self.universal),has(self.individual)].filter(x,x==true).size() == 1'
+                                            rule: has(self.universal) != has(self.individual)
                                       maxItems: 16
                                       minItems: 1
                                       type: array
@@ -17491,7 +18204,7 @@ spec:
                               - message: valuesPerLevel must have the same length as the number of levels in this TopologyAssignment
                                 rule: self.slices.all(x, size(x.valuesPerLevel) == size(self.levels))
                         type: object
-                      maxItems: 8
+                      maxItems: 18
                       type: array
                       x-kubernetes-list-map-keys:
                         - name
@@ -17603,7 +18316,7 @@ spec:
                           required:
                             - name
                           type: object
-                        maxItems: 8
+                        maxItems: 18
                         type: array
                         x-kubernetes-list-type: atomic
                       requeueAfterSeconds:
@@ -17668,6 +18381,8 @@ spec:
                     - Finished: the associated workload finished running (failed or succeeded).
                     - PodsReady: at least `.spec.podSets[*].count` Pods are ready or have
                     succeeded.
+                    - PodsScheduled: all the Pods required by the admission have been
+                    scheduled or have succeeded.
                     conditions are limited to 16 items.
                   items:
                     description: Condition contains details for one aspect of the current state of this API Resource.
@@ -17739,6 +18454,37 @@ spec:
                   maxItems: 20
                   type: array
                   x-kubernetes-list-type: atomic
+                preemptionGates:
+                  description: |-
+                    preemptionGates is a list of states of gates governing whether the workload
+                    can trigger preemptions.
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        description: lastTransitionTime is the last time the gate transitioned from one status to another.
+                        format: date-time
+                        type: string
+                      name:
+                        description: name identifies the preemption gate.
+                        maxLength: 63
+                        minLength: 1
+                        type: string
+                      position:
+                        description: position of the preemption gate. One of
+                        enum:
+                          - Closed
+                          - Open
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - name
+                      - position
+                    type: object
+                  maxItems: 8
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - name
+                  x-kubernetes-list-type: map
                 reclaimablePods:
                   description: |-
                     reclaimablePods keeps track of the number pods within a podset for which
@@ -17759,7 +18505,7 @@ spec:
                       - count
                       - name
                     type: object
-                  maxItems: 8
+                  maxItems: 18
                   type: array
                   x-kubernetes-list-map-keys:
                     - name
@@ -17815,7 +18561,7 @@ spec:
                     required:
                       - name
                     type: object
-                  maxItems: 8
+                  maxItems: 18
                   type: array
                   x-kubernetes-list-map-keys:
                     - name
@@ -17893,9 +18639,11 @@ spec:
             - message: priorityClassRef.name is immutable for scheduling.k8s.io/priorityclass while workload quota reserved
               rule: '(has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'') && has(oldSelf.spec.priorityClassRef) && has(self.spec.priorityClassRef) && self.spec.priorityClassRef.group == ''scheduling.k8s.io'' && self.spec.priorityClassRef.kind == ''PriorityClass'') ? oldSelf.spec.priorityClassRef.name == self.spec.priorityClassRef.name : true'
             - message: queueName is immutable while workload quota reserved
-              rule: '(has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && has(oldSelf.spec.queueName) && has(self.spec.queueName) ? oldSelf.spec.queueName == self.spec.queueName : true'
-            - message: maximumExecutionTimeSeconds is immutable while workload quota reserved
+              rule: '((has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True'')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == ''QuotaReserved'' && c.status == ''True''))) ? ((has(oldSelf.spec.queueName) == has(self.spec.queueName)) && (!has(oldSelf.spec.queueName) || oldSelf.spec.queueName == self.spec.queueName)) : true'
+            - message: maximumExecutionTimeSeconds is immutable while the workload is admitted
               rule: ((has(oldSelf.status) && has(oldSelf.status.conditions) && oldSelf.status.conditions.exists(c, c.type == 'Admitted' && c.status == 'True')) && (has(self.status) && has(self.status.conditions) && self.status.conditions.exists(c, c.type == 'Admitted' && c.status == 'True')))?((has(oldSelf.spec.maximumExecutionTimeSeconds)?oldSelf.spec.maximumExecutionTimeSeconds:0) ==  (has(self.spec.maximumExecutionTimeSeconds)?self.spec.maximumExecutionTimeSeconds:0)):true
+      selectableFields:
+        - jsonPath: .status.admission.clusterQueue
       served: true
       storage: true
       subresources:

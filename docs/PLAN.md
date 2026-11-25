@@ -52,7 +52,7 @@ This controller is the stopgap from the design doc *Hero Workloads on Kueue TAS:
 **Done when:** `make build lint test` green; suite_test boots envtest with kueue CRDs and a bare manager.
 
 ### M1 — Config
-`pkg/config/`: `TaintKey` (default `hero.coreweave.com/taint`), `DrainTimeout` (30m), `HeroCQLabelKey` (`hero.coreweave.com/enabled`), `HeroPriorityClassName` (`hero-critical`), `GPUResourceName` (`nvidia.com/gpu`), weights `{0.7, 0.2, 0.1}`, `RuntimeHalfLife` (6h), `CrossCQMultiplier` (5), `StuckDetectionMode` (`message`|`reason`), `DryRun`, `NonBlockingPodLabels` (hpc-verification carve-out; ANY-match). Flags + optional `--config` YAML from ConfigMap; no hot reload. **Tests:** defaults, precedence, validation.
+`pkg/config/`: `TaintKey` (default `hero.coreweave.com/taint`), `DrainTimeout` (30m), `HeroCQLabelKey` (`hero.coreweave.com/enabled`), `HeroPriorityClassName` (`hero-critical`), `GPUResourceName` (`nvidia.com/gpu`), weights `{0.7, 0.2, 0.1}`, `RuntimeHalfLife` (6h), `CrossCQMultiplier` (5), `StuckDetectionMode` (`message`|`reason`), `StuckAfter` (2m debounce on how long a hero is unadmitted before it can start a drain), `DryRun`, `NonBlockingPodLabels` (hpc-verification carve-out; ANY-match). Flags + optional `--config` YAML from ConfigMap; no hot reload. **Tests:** defaults, precedence, validation.
 
 ### M2 — Hero identification & stuck detection (pure)
 `pkg/hero/`:

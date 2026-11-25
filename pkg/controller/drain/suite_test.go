@@ -76,6 +76,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	testCfg = config.Default()
+	// The specs drive a fixed clock against conditions stamped by the
+	// apiserver, so the real-time debounce is off here; it has its own unit tests.
+	testCfg.StuckAfter.Duration = 0
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:         scheme,

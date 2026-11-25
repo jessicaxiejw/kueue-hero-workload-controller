@@ -6,6 +6,7 @@ package hero
 
 import (
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,16 @@ const (
 	// 0.16.x stamps for every not-admitted cause; the message must be
 	// inspected to tell a TAS no-fit apart from quota starvation.
 	reasonPending = "Pending"
+
+	// Kueue >= 0.19 QuotaReserved=False reasons. Kueue stamps the MOST
+	// severe reason across every flavor attempt (NoMatchingFlavor >
+	// WaitingForQuota > TopologyPlacementFailed), and a ClusterQueue that
+	// lists a second, zero-quota flavor always fails that flavor with
+	// NoMatchingFlavor. So a real TAS no-fit usually surfaces as one of the
+	// other reasons, and the reason of a pending hero flips between cycles.
+	reasonNoMatchingFlavor             = "NoMatchingFlavor"
+	reasonWaitingForQuota              = "WaitingForQuota"
+	reasonWaitingForPreemptedWorkloads = "WaitingForPreemptedWorkloads"
 
 	// The two fragments below identify a TAS no-fit in a kueue 0.16.x
 	// condition message. The full message reads e.g.:
@@ -61,7 +72,14 @@ func IsStuckTASNoFit(wl *kueue.Workload, mode config.DetectionMode) bool {
 	}
 
 	byReason := cond.Reason == reasonTopologyPlacementFailed
-	byMessage := cond.Reason == reasonPending && messageIsTASNoFit(cond.Message)
+	if mode == config.DetectionAuto {
+		// Tolerate the reasons a pending hero cycles through on kueue >= 0.19.
+		// WaitingForPreemptedWorkloads is deliberately not a trigger: kueue has
+		// already picked victims, so a new drain would only add churn. A drain
+		// that is already up survives it (see IsPending).
+		byReason = byReason || cond.Reason == reasonNoMatchingFlavor || cond.Reason == reasonWaitingForQuota
+	}
+	byMessage := (cond.Reason == reasonPending || cond.Reason == reasonWaitingForQuota) && messageIsTASNoFit(cond.Message)
 
 	switch mode {
 	case config.DetectionReason:
@@ -89,4 +107,42 @@ func messageIsTASNoFit(msg string) bool {
 	// quota frees up without us evicting anyone.
 	return strings.Contains(msg, msgInsufficientUnusedQuota) &&
 		!strings.Contains(msg, msgKueuePreempting)
+}
+
+// IsPending reports whether the Workload is still waiting for admission:
+// QuotaReserved=False, not finished, no admission recorded. Unlike
+// IsStuckTASNoFit it ignores the reason, which on kueue >= 0.19 flips between
+// cycles (NoMatchingFlavor, WaitingForQuota, WaitingForPreemptedWorkloads,
+// TopologyPlacementFailed) while the hero stays pending. A drain that is
+// already up stays up for as long as this holds.
+func IsPending(wl *kueue.Workload) bool {
+	if wl.Status.Admission != nil || meta.IsStatusConditionTrue(wl.Status.Conditions, kueue.WorkloadFinished) {
+		return false
+	}
+	cond := meta.FindStatusCondition(wl.Status.Conditions, kueue.WorkloadQuotaReserved)
+	return cond != nil && cond.Status == metav1.ConditionFalse
+}
+
+// PendingFor is how long QuotaReserved has been False. The condition's
+// lastTransitionTime only moves when the status changes, not when the reason
+// does, so it is a stable age across the reason flips above. It is zero when
+// the Workload is not pending.
+func PendingFor(wl *kueue.Workload, now time.Time) time.Duration {
+	if !IsPending(wl) {
+		return 0
+	}
+	cond := meta.FindStatusCondition(wl.Status.Conditions, kueue.WorkloadQuotaReserved)
+	if d := now.Sub(cond.LastTransitionTime.Time); d > 0 {
+		return d
+	}
+	return 0
+}
+
+// QuotaReservedReason returns the QuotaReserved condition's reason, or "" when
+// there is none. It is for log lines.
+func QuotaReservedReason(wl *kueue.Workload) string {
+	if cond := meta.FindStatusCondition(wl.Status.Conditions, kueue.WorkloadQuotaReserved); cond != nil {
+		return cond.Reason
+	}
+	return ""
 }

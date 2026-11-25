@@ -48,8 +48,9 @@ import (
 type DetectionMode string
 
 const (
-	// DetectionAuto matches either version's signal: the granular
-	// TopologyPlacementFailed reason (kueue >= 0.19) OR the legacy
+	// DetectionAuto matches either version's signal: the granular reasons
+	// kueue >= 0.19 cycles through while a hero is pending
+	// (TopologyPlacementFailed, NoMatchingFlavor, WaitingForQuota) OR the legacy
 	// "Pending" reason combined with a TAS no-fit message (kueue 0.16).
 	// Works on both, survives a kueue upgrade with no config change.
 	DetectionAuto DetectionMode = "auto"
@@ -123,6 +124,12 @@ type Config struct {
 	// riskiest assumption in the design: if kueue rewording ever breaks a
 	// mode, operators can pin another instead of waiting on a new build.
 	StuckDetection DetectionMode `json:"stuckDetection"`
+	// StuckAfter is how long a hero must have been unadmitted
+	// (QuotaReserved=False) before it counts as stuck and may start a drain.
+	// It debounces the reason flips kueue >= 0.19 produces; the age is read
+	// from the condition's lastTransitionTime, which those flips do not
+	// move. Zero disables the debounce.
+	StuckAfter metav1.Duration `json:"stuckAfter"`
 	// DryRun computes and reports drain decisions without tainting nodes
 	// or touching victim workloads.
 	DryRun bool `json:"dryRun"`
@@ -149,6 +156,7 @@ func Default() Config {
 		CrossCQMultiplier:     5,
 		CrossCohortMultiplier: 10,
 		StuckDetection:        DetectionAuto,
+		StuckAfter:            metav1.Duration{Duration: 2 * time.Minute},
 		DryRun:                false,
 		NonBlockingPodLabels:  map[string]string{},
 	}
@@ -214,6 +222,9 @@ func (c *Config) Validate() error {
 	}
 	if c.NudgeInterval.Duration <= 0 {
 		errs = append(errs, "nudgeInterval must be positive")
+	}
+	if c.StuckAfter.Duration < 0 {
+		errs = append(errs, "stuckAfter must not be negative")
 	}
 	if c.RuntimeHalfLife.Duration <= 0 {
 		errs = append(errs, "runtimeHalfLife must be positive")

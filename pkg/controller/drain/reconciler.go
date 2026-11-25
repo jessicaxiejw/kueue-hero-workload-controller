@@ -156,13 +156,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	log.V(2).Info("drain state read from node taints",
 		"drainsInFlight", len(drains), "ownDrain", own != nil, "ownNodes", drainNodeCount(own))
 
-	if !hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
+	// A drain this hero already started keeps the hero on the stuck path for as
+	// long as it is pending, whatever reason kueue reports this cycle: kueue
+	// >= 0.19 flips it between NoMatchingFlavor, WaitingForQuota and
+	// WaitingForPreemptedWorkloads while nothing changed, and judging "stuck"
+	// from each snapshot made the controller alternate between re-planning and
+	// merely cycling victims. Staying on the stuck path also keeps the
+	// feasibility re-check that aborts a drain whose hero can no longer fit.
+	// The drain ends on admission, finish, deactivation, or the janitor's
+	// timeout.
+	isStuck, wait := r.stuckState(wl)
+	latched := own != nil && hero.IsPending(wl)
+	if latched && !isStuck {
+		log.V(2).Info("hero still pending with own drain up; staying on the stuck path",
+			"reason", hero.QuotaReservedReason(wl), "nodes", len(own.Nodes))
+		isStuck = true
+	}
+	if !isStuck {
 		if own != nil {
 			// Admitted (or otherwise unstuck) with our taints still up:
 			// untainting is the janitor's job; victims may still cycle.
 			log.V(2).Info("hero no longer stuck with own drain up; cycling victims",
 				"admitted", wl.Status.Admission != nil, "nodes", len(own.Nodes))
 			return r.cycleVictims(ctx, wl, own.Nodes)
+		}
+		if wait > 0 {
+			log.V(2).Info("hero looks stuck but has not been pending long enough; waiting",
+				"reason", hero.QuotaReservedReason(wl), "stuckAfter", r.Cfg.StuckAfter.Duration, "wait", wait)
+			return ctrl.Result{RequeueAfter: wait}, nil
 		}
 		log.V(2).Info("hero is not stuck on a TAS no-fit; nothing to do")
 		return ctrl.Result{}, nil
@@ -860,7 +881,7 @@ func (r *Reconciler) stuckHeroes(ctx context.Context, all []kueue.Workload) ([]k
 		if wl.Spec.Active != nil && !*wl.Spec.Active {
 			continue
 		}
-		if !hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
+		if stuck, _ := r.stuckState(wl); !stuck {
 			continue
 		}
 		cq, err := r.clusterQueueFor(ctx, wl)
@@ -1051,4 +1072,18 @@ func (r *Reconciler) mapHeroEventToStuck(ctx context.Context, obj client.Object)
 		return nil
 	}
 	return r.stuckRequests(ctx)
+}
+
+// stuckState applies the detection mode plus the StuckAfter debounce. When
+// detection matches but the hero has been pending for less than StuckAfter,
+// wait is the remaining time so the caller can come back instead of waiting
+// for an unrelated event.
+func (r *Reconciler) stuckState(wl *kueue.Workload) (stuck bool, wait time.Duration) {
+	if !hero.IsStuckTASNoFit(wl, r.Cfg.StuckDetection) {
+		return false, 0
+	}
+	if age := hero.PendingFor(wl, r.Now()); age < r.Cfg.StuckAfter.Duration {
+		return false, r.Cfg.StuckAfter.Duration - age
+	}
+	return true, 0
 }

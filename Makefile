@@ -57,7 +57,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 
 # KUEUE_VERSION pins the kueue release whose CRDs are vendored for envtest.
 # Keep in sync with the sigs.k8s.io/kueue version in go.mod.
-KUEUE_VERSION ?= v0.16.9
+KUEUE_VERSION ?= v0.20.6
 
 .PHONY: kueue-crds
 kueue-crds: ## Re-vendor the kueue CRDs used by envtest into test/crds/.
